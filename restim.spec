@@ -1,9 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_data_files
 
 added_files = [
     ('resources/phase diagram bg.svg', 'resources/'),
     ('resources/favicon.png', 'resources/')
 ]
+
+# Collect ahrs data files (WMM coefficients)
+added_files += collect_data_files('ahrs')
 
 a = Analysis(
     ['restim.py'],
@@ -14,7 +18,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['PyQt5', 'PyQt6', 'tkinter'],
     noarchive=False,
 )
 pyz = PYZ(a.pure)
