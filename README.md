@@ -69,7 +69,7 @@ The original Restim by diglet48 did not include Coyote support. Both voltmouse69
 
 ## Installation
 
-**Windows**: download the latest release package: https://github.com/diglet48/restim/releases
+**Windows**: download the latest release package: https://github.com/Harlekin7/restim/releases
 
 **Linux/mac**: make sure python 3.10 or newer is installed on your system.
 Download the Restim source code, and execute `run.sh`
