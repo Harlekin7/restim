@@ -3,10 +3,10 @@ import sys
 from enum import Enum
 
 from PySide6 import QtGui
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QSizePolicy, QFrame, QStyleFactory
+    QApplication, QMainWindow, QWidget, QSizePolicy, QFrame, QStyleFactory, QMessageBox
 )
 import logging
 
@@ -757,4 +757,18 @@ def run():
     app = QApplication(sys.argv)
     win = Window()
     win.show()
+
+    # Show beta test warning popup
+    msg = QMessageBox(win)
+    msg.setWindowTitle("Beta Test Version")
+    msg.setIcon(QMessageBox.Warning)
+    msg.setText("<b>This is a beta test version for Coyote 3.0 support.</b>")
+    msg.setInformativeText(
+        "Please report any issues and provide feedback using the form below:\n\n"
+        '<a href="https://forms.gle/GyWMycqQazLobKKi8">https://forms.gle/GyWMycqQazLobKKi8</a>'
+    )
+    msg.setTextFormat(Qt.RichText)
+    msg.setStandardButtons(QMessageBox.Ok)
+    msg.exec()
+
     sys.exit(app.exec())
