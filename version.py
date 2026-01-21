@@ -1,1 +1,1 @@
-VERSION = "v1.53"
+VERSION = "v1.53-coyote-0.1"
