@@ -93,6 +93,10 @@ threephase_transform_limit_top = Setting('threephase_transform/limit_top', 1.0, 
 threephase_transform_limit_bottom = Setting('threephase_transform/limit_bottom', -1.0, float)
 threephase_transform_limit_left = Setting('threephase_transform/limit_left', -1.0, float)
 threephase_transform_limit_right = Setting('threephase_transform/limit_right', 1.0, float)
+
+# Coyote 3.0 device settings
+coyote_device_name = Setting('coyote/device_name', '', str)
+coyote_enable_three_phase_calibration = Setting('coyote/enable_three_phase_calibration', False, bool)
 threephase_map_to_edge_start = Setting('threephase_transform/map_to_edge_start', 0.0, float)
 threephase_map_to_edge_length = Setting('threephase_transform/map_to_edge_length', 200, float)
 threephase_map_to_edge_invert = Setting('threephase_transform/map_to_edge_invert', False, bool)
@@ -165,6 +169,35 @@ focstim_password = Setting("focstim/wifi_password", '', str)
 focstim_ip = Setting("focstim/wifi_ip", '', str)
 
 neostim_serial_port = Setting("neostim/serial_port", '', str)
+
+# Coyote 3.0 device settings
+coyote_channel_a_limit = Setting("coyote/channel_a_limit", 200, int)
+coyote_channel_b_limit = Setting("coyote/channel_b_limit", 200, int)
+coyote_channel_a_freq_balance = Setting("coyote/channel_a_freq_balance", 160, int)
+coyote_channel_b_freq_balance = Setting("coyote/channel_b_freq_balance", 160, int)
+coyote_channel_a_intensity_balance = Setting("coyote/channel_a_intensity_balance", 0, int)
+coyote_channel_b_intensity_balance = Setting("coyote/channel_b_intensity_balance", 0, int)
+
+# Coyote channel configuration
+coyote_channel_a_strength_max = Setting("coyote/channel_a_strength_max", 100, int)
+coyote_channel_a_freq_min = Setting("coyote/channel_a_freq_min", 70, int)
+coyote_channel_a_freq_max = Setting("coyote/channel_a_freq_max", 100, int)
+coyote_channel_b_strength_max = Setting("coyote/channel_b_strength_max", 100, int)
+coyote_channel_b_freq_min = Setting("coyote/channel_b_freq_min", 30, int)
+coyote_channel_b_freq_max = Setting("coyote/channel_b_freq_max", 100, int)
+
+# Coyote algorithm tuning
+coyote_max_intensity_change_per_pulse = Setting("coyote/max_intensity_change_per_pulse", 1.0, float)
+coyote_debug_logging = Setting("coyote/debug_logging", False, bool)
+coyote_graph_window = Setting("coyote/graph_window", 3.0, float)
+coyote_queue_horizon_seconds = Setting("coyote/queue_horizon_seconds", 0.15, float)
+coyote_packet_margin = Setting("coyote/packet_margin", 0.8, float)
+coyote_texture_min_hz = Setting("coyote/texture_min_hz", 0.5, float)
+coyote_texture_max_hz = Setting("coyote/texture_max_hz", 5.0, float)
+coyote_texture_depth_fraction = Setting("coyote/texture_depth_fraction", 0.5, float)
+coyote_jitter_limit_fraction = Setting("coyote/jitter_limit_fraction", 0.5, float)
+coyote_residual_bound = Setting("coyote/residual_bound", 0.49, float)
+coyote_enable_three_phase_calibration = Setting("coyote/enable_three_phase_calibration", True, bool)
 
 # Pattern preferences - we'll store this as a JSON string and convert to dict
 import json

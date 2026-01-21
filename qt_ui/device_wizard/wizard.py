@@ -9,6 +9,7 @@ from qt_ui.device_wizard.type_select import WizardPageDeviceType
 from qt_ui.device_wizard.waveform_select import WizardPageWaveformType
 from qt_ui.device_wizard.safety_limits import WizardPageSafetyLimits
 from qt_ui.device_wizard.neostim_waveform_select import WizardPageNeoStimWaveformSelect
+from qt_ui.device_wizard.coyote_waveform_select import WizardPageCoyoteWaveformSelect
 from qt_ui.device_wizard.enums import DeviceType, WaveformType, DeviceConfiguration
 
 
@@ -22,6 +23,7 @@ class WizardPage(Enum):
     Page_limits_foc = 6
     Page_neostim_waveform = 4
     Page_focstim_waveform = 5
+    Page_coyote_waveform = 7
 
 
 class DeviceSelectionWizard(QWizard):
@@ -48,6 +50,8 @@ class DeviceSelectionWizard(QWizard):
         self.setPage(WizardPage.Page_neostim_waveform.value, self.page_neostim_waveform_select)
         self.page_focstim_waveform_select = WizardPageFocStimWaveformSelect()
         self.setPage(WizardPage.Page_focstim_waveform.value, self.page_focstim_waveform_select)
+        self.page_coyote_waveform_select = WizardPageCoyoteWaveformSelect()
+        self.setPage(WizardPage.Page_coyote_waveform.value, self.page_coyote_waveform_select)
 
         self.set_configuration(DeviceConfiguration.from_settings())
 
@@ -76,6 +80,8 @@ class DeviceSelectionWizard(QWizard):
                 return WizardPage.Page_focstim_waveform.value
             elif self.page_device_type.neostim_radio.isChecked():
                 return WizardPage.Page_neostim_waveform.value
+            elif self.page_device_type.coyote_radio.isChecked():
+                return WizardPage.Page_coyote_waveform.value
             else:
                 raise RuntimeError("unknown device type")
 
@@ -95,6 +101,8 @@ class DeviceSelectionWizard(QWizard):
             elif self.page_device_type.focstim_radio.isChecked():
                 pass
             elif self.page_device_type.neostim_radio.isChecked():
+                pass
+            elif self.page_device_type.coyote_radio.isChecked():
                 pass
 
         return super(DeviceSelectionWizard, self).validateCurrentPage()
@@ -146,6 +154,13 @@ class DeviceSelectionWizard(QWizard):
                 None, None,
                 None
             )
+        elif self.page_device_type.coyote_radio.isChecked():
+            return DeviceConfiguration(
+                DeviceType.COYOTE_THREE_PHASE if self.page_coyote_waveform_select.is_three_phase() else DeviceType.COYOTE_TWO_CHANNEL,
+                WaveformType.PULSE_BASED,
+                min_freq, max_freq,
+                waveform_ampltiude_amps
+            )
         else:
             assert(False)
 
@@ -160,6 +175,12 @@ class DeviceSelectionWizard(QWizard):
             self.page_focstim_waveform_select.four_phase_radio.setChecked(True)
         if config.device_type == DeviceType.NEOSTIM_THREE_PHASE:
             self.page_device_type.neostim_radio.setChecked(True)
+        elif config.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
+            self.page_device_type.coyote_radio.setChecked(True)
+            if config.device_type == DeviceType.COYOTE_THREE_PHASE:
+                self.page_coyote_waveform_select.three_phase_radio.setChecked(True)
+            else:
+                self.page_coyote_waveform_select.two_channel_radio.setChecked(True)
 
         self.page_waveform_type.continuous_radio.setChecked(config.waveform_type == WaveformType.CONTINUOUS)
         self.page_waveform_type.pulse_based_radio.setChecked(config.waveform_type == WaveformType.PULSE_BASED)

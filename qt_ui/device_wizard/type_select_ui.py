@@ -38,13 +38,17 @@ class Ui_WizardPageDeviceType(object):
 
         self.verticalSpacer = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
 
-        self.formLayout.setItem(3, QFormLayout.LabelRole, self.verticalSpacer)
+        self.formLayout.setItem(4, QFormLayout.LabelRole, self.verticalSpacer)
 
         self.neostim_radio = QRadioButton(WizardPageDeviceType)
         self.neostim_radio.setObjectName(u"neostim_radio")
 
         self.formLayout.setWidget(2, QFormLayout.LabelRole, self.neostim_radio)
 
+        self.coyote_radio = QRadioButton(WizardPageDeviceType)
+        self.coyote_radio.setObjectName(u"coyote_radio")
+
+        self.formLayout.setWidget(3, QFormLayout.LabelRole, self.coyote_radio)
 
         self.retranslateUi(WizardPageDeviceType)
 
@@ -57,5 +61,6 @@ class Ui_WizardPageDeviceType(object):
         self.audio_based_radio.setText(QCoreApplication.translate("WizardPageDeviceType", u"Audio-based three-phase", None))
         self.focstim_radio.setText(QCoreApplication.translate("WizardPageDeviceType", u"FOC-Stim", None))
         self.neostim_radio.setText(QCoreApplication.translate("WizardPageDeviceType", u"NeoStim", None))
+        self.coyote_radio.setText(QCoreApplication.translate("WizardPageDeviceType", u"DG-LAB Coyote 3.0", None))
     # retranslateUi
 

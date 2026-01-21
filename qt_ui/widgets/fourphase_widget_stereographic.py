@@ -238,17 +238,17 @@ class FourphaseWidgetStereographic(QGraphicsView):
 
     def set_cursor_position_xy(self, xy):
         xyz = projection.xy_to_xyz(xy)
-        size = projection.scale(xy) * 2
-        self.cursor_1.setVisible(size < 10)
+        size = float(projection.scale(xy) * 2)
+        self.cursor_1.setVisible(bool(size < 10))
         self.cursor_1.setScale(size)
-        self.cursor_1.setX(xy[0] - DOT_WIDTH/2 * size)
-        self.cursor_1.setY(xy[1] - DOT_WIDTH/2 * size)
+        self.cursor_1.setX(float(xy[0]) - DOT_WIDTH/2 * size)
+        self.cursor_1.setY(float(xy[1]) - DOT_WIDTH/2 * size)
         xy = projection.xyz_to_xy(-np.array(xyz))
-        size = projection.scale(xy) * 2
-        self.cursor_2.setVisible(size < 10)
+        size = float(projection.scale(xy) * 2)
+        self.cursor_2.setVisible(bool(size < 10))
         self.cursor_2.setScale(size)
-        self.cursor_2.setX(xy[0] - DOT_WIDTH/2 * size)
-        self.cursor_2.setY(xy[1] - DOT_WIDTH/2 * size)
+        self.cursor_2.setX(float(xy[0]) - DOT_WIDTH/2 * size)
+        self.cursor_2.setY(float(xy[1]) - DOT_WIDTH/2 * size)
         self.update()
 
     def set_cursor_visibility(self, alpha=1.0):

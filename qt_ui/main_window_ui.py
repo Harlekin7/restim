@@ -32,8 +32,10 @@ from qt_ui.three_phase_settings_widget import ThreePhaseSettingsWidget
 from qt_ui.vibration_settings_widget import VibrationSettingsWidget
 from qt_ui.volume_control_widget import VolumeControlWidget
 from qt_ui.waveform_details_widget import WaveformDetailsWidget
+from qt_ui.coyote_settings_widget import CoyoteSettingsWidget
 from qt_ui.widgets.fourphase_widget_stereographic import FourphaseWidgetStereographic
 from qt_ui.widgets.threephase_widget import ThreephaseWidgetAlphaBeta
+from qt_ui.widgets.coyote_threephase_widget import CoyoteThreePhaseWidget
 from qt_ui.widgets.volume_widget import VolumeWidget
 import restim_rc
 
@@ -146,6 +148,16 @@ class Ui_MainWindow(object):
         self.graphicsView_fourphase.setObjectName(u"graphicsView_fourphase")
         self.graphicsView_fourphase.setGeometry(QRect(0, 0, 200, 200))
         self.stackedWidget_visual.addWidget(self.page_fourphase)
+        self.page_coyote_threephase = QWidget()
+        self.page_coyote_threephase.setObjectName(u"page_coyote_threephase")
+        self.graphicsView_coyote_threephase = CoyoteThreePhaseWidget(self.page_coyote_threephase)
+        self.graphicsView_coyote_threephase.setObjectName(u"graphicsView_coyote_threephase")
+        self.graphicsView_coyote_threephase.setGeometry(QRect(0, 0, 200, 200))
+        sizePolicy1.setHeightForWidth(self.graphicsView_coyote_threephase.sizePolicy().hasHeightForWidth())
+        self.graphicsView_coyote_threephase.setSizePolicy(sizePolicy1)
+        self.graphicsView_coyote_threephase.setMinimumSize(QSize(200, 200))
+        self.graphicsView_coyote_threephase.setMaximumSize(QSize(200, 200))
+        self.stackedWidget_visual.addWidget(self.page_coyote_threephase)
 
         self.verticalLayout.addWidget(self.stackedWidget_visual)
 
@@ -221,6 +233,9 @@ class Ui_MainWindow(object):
         self.tab_neostim = NeoStimSettingsWidget()
         self.tab_neostim.setObjectName(u"tab_neostim")
         self.tabWidget.addTab(self.tab_neostim, "")
+        self.tab_coyote = CoyoteSettingsWidget()
+        self.tab_coyote.setObjectName(u"tab_coyote")
+        self.tabWidget.addTab(self.tab_coyote, "")
         self.tab_a_b_testing = ABTestWidget()
         self.tab_a_b_testing.setObjectName(u"tab_a_b_testing")
         self.tabWidget.addTab(self.tab_a_b_testing, "")
@@ -333,6 +348,7 @@ class Ui_MainWindow(object):
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_carrier), QCoreApplication.translate("MainWindow", u"Carrier settings", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_pulse_settings), QCoreApplication.translate("MainWindow", u"Pulse settings", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_neostim), QCoreApplication.translate("MainWindow", u"NeoStim", None))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_coyote), QCoreApplication.translate("MainWindow", u"Coyote", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_a_b_testing), QCoreApplication.translate("MainWindow", u"A/B testing", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_volume), QCoreApplication.translate("MainWindow", u"Volume", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_vibrate), QCoreApplication.translate("MainWindow", u"Vibration", None))

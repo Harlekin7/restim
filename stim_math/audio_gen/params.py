@@ -181,3 +181,26 @@ class SafetyParamsFOC:
     maximum_carrier_frequency: float
     waveform_amplitude_amps: float
 
+@dataclass
+class CoyoteChannelParams:
+    minimum_frequency: AbstractAxis
+    maximum_frequency: AbstractAxis
+    maximum_strength: AbstractAxis
+    vibration: VibrationParams
+    pulse_frequency: AbstractAxis = None
+
+@dataclass
+class CoyoteAlgorithmParams:
+    position: ThreephasePositionParams
+    transform: ThreephasePositionTransformParams
+    calibrate: ThreephaseCalibrationParams
+    volume: VolumeParams
+    carrier_frequency: AbstractAxis
+    pulse_frequency: AbstractAxis
+    pulse_width: AbstractAxis
+    pulse_interval_random: AbstractAxis
+    pulse_rise_time: AbstractAxis
+    max_intensity_change_per_pulse: AbstractAxis
+    channel_a: CoyoteChannelParams
+    channel_b: CoyoteChannelParams
+
