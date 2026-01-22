@@ -55,6 +55,11 @@ class CoyoteDevice(OutputDevice, QObject):
         self._force_disconnect = False  # Flag for temporary disconnect (e.g., reset button)
         self._paused = False  # Flag to pause updates without stopping connection
         self._update_loop_running = False  # Track if update loop is running
+        self._update_loop_last_heartbeat = 0  # Timestamp of last update loop iteration
+        self._last_battery_poll = 0  # Initialize timing state
+        self._last_parameter_resend = 0  # Initialize timing state
+        self._scan_backoff_delay = 0  # Exponential backoff for scan retries
+        self._scan_attempt_counter = 0  # Count of consecutive failed scan attempts
 
         # Start connection process
         self._start_connection_loop()
@@ -76,8 +81,6 @@ class CoyoteDevice(OutputDevice, QObject):
         """Main connection loop that runs the state machine"""
         logger.info(f"{LOG_PREFIX} Starting connection loop")
         prev_stage = self.connection_stage
-
-        attempt_counter = 0
 
         while not self._shutdown:
             try:
@@ -103,14 +106,19 @@ class CoyoteDevice(OutputDevice, QObject):
 
                 elif self.connection_stage == ConnectionStage.SCANNING:
                     if await self._scan_for_device():
-                        attempt_counter = 0
+                        self._scan_attempt_counter = 0
+                        self._scan_backoff_delay = 0  # Reset backoff on success
                         logger.info(f"{LOG_PREFIX} Device found, connecting...")
                         self.connection_stage = ConnectionStage.CONNECTING
                     else:
-                        attempt_counter += 1
-                        # Retry quickly without delay
-                        logger.info(f"{LOG_PREFIX} Device not found (attempt {attempt_counter}); retrying...")
-                        # No wait - retry immediately
+                        self._scan_attempt_counter += 1
+                        # Exponential backoff: 0.5s, 1s, 2s, 4s, max 5s
+                        if self._scan_backoff_delay < 0.5:
+                            self._scan_backoff_delay = 0.5
+                        else:
+                            self._scan_backoff_delay = min(self._scan_backoff_delay * 2, 5.0)
+                        logger.info(f"{LOG_PREFIX} Device not found (attempt {self._scan_attempt_counter}); retrying in {self._scan_backoff_delay:.1f}s...")
+                        await asyncio.sleep(self._scan_backoff_delay)
 
                 elif self.connection_stage == ConnectionStage.CONNECTING:
                     try:
@@ -119,9 +127,9 @@ class CoyoteDevice(OutputDevice, QObject):
                         self.connection_stage = ConnectionStage.SERVICE_DISCOVERY
                     except Exception as e:
                         logger.error(f"{LOG_PREFIX} Connection failed: {e}")
-                        # Reset client and go back to scanning
+                        # Reset client and go back to scanning (don't use disconnect() - it kills the loop)
                         self.client = None
-                        await self.disconnect()
+                        self.connection_stage = ConnectionStage.DISCONNECTED
 
                 elif self.connection_stage == ConnectionStage.SERVICE_DISCOVERY:
                     try:
@@ -132,10 +140,12 @@ class CoyoteDevice(OutputDevice, QObject):
                             self.connection_stage = ConnectionStage.STATUS_SUBSCRIBE
                         else:
                             logger.error(f"{LOG_PREFIX} Service discovery failed")
-                            await self.disconnect()
+                            await self._disconnect_client()
+                            self.connection_stage = ConnectionStage.DISCONNECTED
                     except Exception as e:
                         logger.error(f"{LOG_PREFIX} Service discovery error: {e}")
-                        await self.disconnect()
+                        await self._disconnect_client()
+                        self.connection_stage = ConnectionStage.DISCONNECTED
 
                 elif self.connection_stage == ConnectionStage.STATUS_SUBSCRIBE:
                     if await self._subscribe_to_notifications(NOTIFY_CHAR_UUID):
@@ -143,7 +153,8 @@ class CoyoteDevice(OutputDevice, QObject):
                         self.connection_stage = ConnectionStage.SYNC_PARAMETERS
                     else:
                         logger.error(f"{LOG_PREFIX} Status subscription failed")
-                        await self.disconnect()
+                        await self._disconnect_client()
+                        self.connection_stage = ConnectionStage.DISCONNECTED
 
                 elif self.connection_stage == ConnectionStage.SYNC_PARAMETERS:
                     if await self._send_parameters():
@@ -164,7 +175,8 @@ class CoyoteDevice(OutputDevice, QObject):
                         self.connection_stage = ConnectionStage.CONNECTED
                     else:
                         logger.error(f"{LOG_PREFIX} Parameter sync failed")
-                        await self.disconnect()
+                        await self._disconnect_client()
+                        self.connection_stage = ConnectionStage.DISCONNECTED
 
                 elif self.connection_stage == ConnectionStage.CONNECTED:
                     # Maintain connection and resend parameters periodically
@@ -172,10 +184,7 @@ class CoyoteDevice(OutputDevice, QObject):
                     # resent on every reconnection, and periodically to ensure parameters survive
                     # any device state resets
                     current_time = time.time()
-                    if not hasattr(self, '_last_battery_poll'):
-                        self._last_battery_poll = current_time
-                    if not hasattr(self, '_last_parameter_resend'):
-                        self._last_parameter_resend = current_time
+                    # Note: _last_battery_poll and _last_parameter_resend are initialized in __init__
 
                     if current_time - self._last_battery_poll >= 10:
                         await self._read_battery_level()
@@ -195,8 +204,10 @@ class CoyoteDevice(OutputDevice, QObject):
 
             except Exception as e:
                 logger.error(f"{LOG_PREFIX} Connection loop error: {e}")
-                # raise e
-                await self.disconnect()
+                # Don't call disconnect() here - it sets _shutdown=True and permanently kills the loop
+                # Use _disconnect_client() to cleanup and let the state machine retry
+                await self._disconnect_client()
+                self.connection_stage = ConnectionStage.DISCONNECTED
 
             # Small delay between iterations
             await asyncio.sleep(0.1)
@@ -207,6 +218,11 @@ class CoyoteDevice(OutputDevice, QObject):
         self.running = True
         self._paused = False  # Resume
 
+        # Check if update loop is stale (no heartbeat for 5+ seconds means it died)
+        current_time = time.time()
+        if self._update_loop_running and (current_time - self._update_loop_last_heartbeat > 5):
+            logger.warning(f"{LOG_PREFIX} Update loop appears stale (no heartbeat), resetting flag")
+            self._update_loop_running = False
 
         # Only schedule update_loop if it's not already running
         if self._event_loop and not self._update_loop_running:
@@ -397,7 +413,8 @@ class CoyoteDevice(OutputDevice, QObject):
 
         except Exception as e:
             logger.error(f"{LOG_PREFIX} Scan error: {e}")
-            await self.disconnect()
+            # Don't call disconnect() here - it sets _shutdown=True and permanently kills the loop
+            # Just return False and let the state machine retry
             return False
 
     async def send_command(self,
@@ -543,11 +560,29 @@ class CoyoteDevice(OutputDevice, QObject):
     def reset_connection(self):
         """Temporary disconnect for resetting connection (reconnect will happen automatically)"""
         logger.info(f"{LOG_PREFIX} Reset connection requested")
-        self._force_disconnect = True  # Signal the connection loop to disconnect temporarily
+        self._scan_backoff_delay = 0  # Reset backoff on manual reset
+        self._scan_attempt_counter = 0  # Reset attempt counter on manual reset
+
+        # If the connection loop has stopped (e.g., due to an error), restart it
+        if self._shutdown:
+            logger.info(f"{LOG_PREFIX} Connection loop was stopped, restarting...")
+            self.restart()
+        else:
+            self._force_disconnect = True  # Signal the connection loop to disconnect temporarily
+
+    def restart(self):
+        """Restart the connection loop if it has stopped (e.g., after an error)"""
+        if self._shutdown:
+            logger.info(f"{LOG_PREFIX} Restarting connection loop")
+            self._shutdown = False
+            self._scan_backoff_delay = 0
+            self._scan_attempt_counter = 0
+            self._start_connection_loop()
 
     async def update_loop(self):
         logger.info(f"{LOG_PREFIX} Starting update loop, running={self.running}, algorithm={self.algorithm}")
         self._update_loop_running = True
+        self._update_loop_last_heartbeat = time.time()
         last_battery_read = time.time()
         battery_read_interval = 5.0  # Read battery every 5 seconds
 
@@ -556,6 +591,9 @@ class CoyoteDevice(OutputDevice, QObject):
 
             while self.running:
                 try:
+                    # Update heartbeat so start_updates() can detect stale loops
+                    self._update_loop_last_heartbeat = time.time()
+
                     if not self.algorithm:
                         logger.warning(f"{LOG_PREFIX} Algorithm not yet set")
                         await asyncio.sleep(0.1)
