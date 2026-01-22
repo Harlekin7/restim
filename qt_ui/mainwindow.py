@@ -38,6 +38,7 @@ from device.coyote.types import CoyoteParams
 from device.coyote.constants import DEVICE_NAME
 from qt_ui.widgets.icon_with_connection_status import IconWithConnectionStatus
 from qt_ui.coyote_settings_widget import CoyoteSettingsWidget
+from qt_ui.widgets.coyote_status_widget import CoyoteStatusWidget
 from stim_math.axis import create_temporal_axis
 
 
@@ -155,6 +156,12 @@ class Window(QMainWindow, Ui_MainWindow):
         self.doubleSpinBox.valueChanged.connect(self.motion_4.set_velocity)
         self.motion_3.set_velocity(self.doubleSpinBox.value())
 
+        # Coyote status widget (shown only in Coyote modes)
+        self.coyote_status_widget = CoyoteStatusWidget()
+        # Insert after groupBox_pattern in the left_frame layout
+        # Layout order: 0=stackedWidget_visual, 1=groupBox_volume, 2=groupBox_pattern, 3=spacer
+        self.left_frame.layout().insertWidget(3, self.coyote_status_widget)
+
         self.output_device = None
 
         self.websocket_server = net.websocketserver.WebSocketServer(self)
@@ -232,6 +239,7 @@ class Window(QMainWindow, Ui_MainWindow):
                     channel_b_intensity_balance=qt_ui.settings.coyote_channel_b_intensity_balance.get()
                 )
                 self.tab_coyote.setup_device(self.output_device)
+                self.coyote_status_widget.set_device(self.output_device)
 
         if config.device_type == DeviceType.NONE:
             self.timer = QTimer()
@@ -427,6 +435,10 @@ class Window(QMainWindow, Ui_MainWindow):
         if config.device_type == DeviceType.COYOTE_TWO_CHANNEL:
             visible |= {self.tab_coyote, self.tab_threephase}
             visible -= {self.tab_vibrate}
+
+        # Show/hide Coyote status widget based on device type
+        is_coyote = config.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL)
+        self.coyote_status_widget.setVisible(is_coyote)
 
         for tab in all_tabs:
             set_visible(tab, tab in visible)
@@ -625,9 +637,11 @@ class Window(QMainWindow, Ui_MainWindow):
                     channel_a_intensity_balance=device.settings.coyote_channel_a_intensity_balance.get(),
                     channel_b_intensity_balance=device.settings.coyote_channel_b_intensity_balance.get(),
                 )
-                # Connect to settings widget if available
+                # Connect to settings widget and status widget
                 if hasattr(self, 'tab_coyote') and self.tab_coyote:
-                    self.tab_coyote.set_device(self.output_device)
+                    self.tab_coyote.setup_device(self.output_device)
+                if hasattr(self, 'coyote_status_widget'):
+                    self.coyote_status_widget.set_device(self.output_device)
 
             self.output_device.start_updates(algorithm)
             self.playstate = PlayState.PLAYING

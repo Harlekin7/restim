@@ -6,7 +6,7 @@ from typing import Dict, Optional
 from PySide6 import QtWidgets, QtCore
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QSlider, QHBoxLayout,
                             QGraphicsView, QGraphicsScene, QGraphicsLineItem, QSpinBox,
-                            QGraphicsRectItem, QToolTip, QGraphicsEllipseItem, QPushButton)
+                            QGraphicsRectItem, QToolTip, QGraphicsEllipseItem)
 from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QPen, QColor, QBrush, QPainterPath
 from device.coyote.device import CoyoteDevice, CoyotePulse, CoyotePulses, CoyoteStrengths
@@ -28,21 +28,8 @@ class CoyoteSettingsWidget(QtWidgets.QWidget):
     def setupUi(self):
         self.setLayout(QVBoxLayout())
 
-        self.label_connection_status = QLabel("Device: Disconnected")
-        self.label_connection_stage = QLabel("Stage: Waiting")
-        self.label_battery_level = QLabel("Battery: —")
-        status_layout = QHBoxLayout()
-        status_layout.addWidget(self.label_connection_status)
-        status_layout.addWidget(self.label_connection_stage)
-        status_layout.addWidget(self.label_battery_level)
-        
-        # Add Reset Connection button
-        self.button_reset_connection = QPushButton("Reset Connection")
-        self.button_reset_connection.setMaximumWidth(120)
-        self.button_reset_connection.clicked.connect(self.on_reset_connection_clicked)
-        
-        self.layout().addLayout(status_layout)
-        self.layout().addWidget(self.button_reset_connection)
+        # Note: Device status, stage, battery, and reset button are now in CoyoteStatusWidget
+        # in the main window's left panel (always visible when in Coyote mode)
 
         configs = (
             ChannelConfig(
@@ -78,8 +65,7 @@ class CoyoteSettingsWidget(QtWidgets.QWidget):
     def setup_device(self, device: CoyoteDevice):
         self.device = device
 
-        self.device.connection_status_changed.connect(self.on_connection_status_changed)
-        self.device.battery_level_changed.connect(self.on_battery_level_changed)
+        # Note: connection_status_changed and battery_level_changed are handled by CoyoteStatusWidget
         self.device.parameters_changed.connect(self.on_parameters_changed)
         self.device.power_levels_changed.connect(self.on_power_levels_changed)
         self.device.pulse_sent.connect(self.on_pulse_sent)
@@ -99,25 +85,8 @@ class CoyoteSettingsWidget(QtWidgets.QWidget):
         if self.device:
             self.device.strengths = control.with_strength(self.device.strengths, value)
 
-    def on_connection_status_changed(self, connected: bool, stage: str = None):
-        self.label_connection_status.setText("Device: Connected" if connected else "Device: Disconnected")
-        if stage:
-            normalized_stage = stage.strip()
-            if connected and normalized_stage.lower() == "connected":
-                stage_text = "Ready"
-            else:
-                stage_text = normalized_stage
-            self.label_connection_stage.setText(f"Stage: {stage_text}")
-        else:
-            self.label_connection_stage.setText("Stage: —")
-
-    def on_battery_level_changed(self, level: int):
-        self.label_battery_level.setText(f"Battery: {level}%")
-
-    def on_reset_connection_clicked(self):
-        """Handle Reset Connection button click"""
-        if self.device:
-            self.device.reset_connection()
+    # Note: on_connection_status_changed, on_battery_level_changed, and on_reset_connection_clicked
+    # are now handled by CoyoteStatusWidget in the main window
 
     def on_parameters_changed(self):
         pass
@@ -145,8 +114,7 @@ class CoyoteSettingsWidget(QtWidgets.QWidget):
     def cleanup(self):
         """Clean up widget resources when switching away from Coyote device"""
         if self.device:
-            self.device.connection_status_changed.disconnect(self.on_connection_status_changed)
-            self.device.battery_level_changed.disconnect(self.on_battery_level_changed)
+            # Note: connection_status_changed and battery_level_changed are handled by CoyoteStatusWidget
             self.device.parameters_changed.disconnect(self.on_parameters_changed)
             self.device.power_levels_changed.disconnect(self.on_power_levels_changed)
             self.device.pulse_sent.disconnect(self.on_pulse_sent)
