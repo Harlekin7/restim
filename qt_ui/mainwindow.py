@@ -609,9 +609,25 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.tab_volume.set_play_state(self.playstate)
                 self.refresh_play_button_icon()
         elif device.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
-            if not self.output_device:
-                logger.warning("Coyote device is no longer initialized")
-                return
+            # Create Coyote device if it doesn't exist
+            if not self.output_device or not isinstance(self.output_device, CoyoteDevice):
+                device_name = device.settings.coyote_device_name.get()
+                if not device_name:
+                    logger.warning("Coyote device name not configured")
+                    return
+                self.output_device = CoyoteDevice(device_name)
+                # Set parameters from settings
+                self.output_device.parameters = CoyoteParams(
+                    channel_a_limit=device.settings.coyote_channel_a_limit.get(),
+                    channel_b_limit=device.settings.coyote_channel_b_limit.get(),
+                    channel_a_freq_balance=device.settings.coyote_channel_a_freq_balance.get(),
+                    channel_b_freq_balance=device.settings.coyote_channel_b_freq_balance.get(),
+                    channel_a_intensity_balance=device.settings.coyote_channel_a_intensity_balance.get(),
+                    channel_b_intensity_balance=device.settings.coyote_channel_b_intensity_balance.get(),
+                )
+                # Connect to settings widget if available
+                if hasattr(self, 'tab_coyote') and self.tab_coyote:
+                    self.tab_coyote.set_device(self.output_device)
 
             self.output_device.start_updates(algorithm)
             self.playstate = PlayState.PLAYING

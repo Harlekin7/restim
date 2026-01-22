@@ -5,9 +5,8 @@ Displays a simple horizontal line representing the alpha axis (left-right channe
 with a moving dot showing the current position. The CoyoteThreePhaseAlgorithm only uses
 alpha for position control (beta is ignored), so this widget shows just left-right movement.
 
-Channel A intensity increases toward the right (alpha = +1)
-Channel B intensity increases toward the left (alpha = -1)
-Center = Equal intensity on both channels
+Visual layout: A label on the left, B label on the right.
+Center = Equal intensity on both channels.
 """
 
 from PySide6.QtCore import Qt, Signal
@@ -19,10 +18,8 @@ class CoyoteThreePhaseWidget(QGraphicsView):
     """
     A QGraphicsView that displays a horizontal line for Coyote three-phase position control.
 
-    The CoyoteThreePhaseAlgorithm uses power-law exponential scaling based on alpha only:
-    - Left side (alpha = -1): Channel B dominant
-    - Right side (alpha = +1): Channel A dominant
-    - Center (alpha = 0): Equal intensity on both channels
+    Visual layout: A label on the left, B label on the right.
+    The dot moves along the alpha axis (-1 to +1).
     """
 
     mousePositionChanged = Signal(float, float)
@@ -99,21 +96,21 @@ class CoyoteThreePhaseWidget(QGraphicsView):
         font.setPointSize(10)
         font.setBold(True)
 
-        # Channel B label (left side - dominant when alpha = -1)
-        self.label_b = QGraphicsTextItem("B")
-        self.label_b.setFont(font)
-        self.label_b.setDefaultTextColor(QColor(80, 80, 80))
-        # Position below the left end
-        self.label_b.setPos(-self._scale - 5, 15)
-        self.scene.addItem(self.label_b)
-
-        # Channel A label (right side - dominant when alpha = +1)
+        # Channel A label (left side - dominant when alpha = -1)
         self.label_a = QGraphicsTextItem("A")
         self.label_a.setFont(font)
         self.label_a.setDefaultTextColor(QColor(80, 80, 80))
-        # Position below the right end
-        self.label_a.setPos(self._scale - 8, 15)
+        # Position below the left end
+        self.label_a.setPos(-self._scale - 5, 15)
         self.scene.addItem(self.label_a)
+
+        # Channel B label (right side - dominant when alpha = +1)
+        self.label_b = QGraphicsTextItem("B")
+        self.label_b.setFont(font)
+        self.label_b.setDefaultTextColor(QColor(80, 80, 80))
+        # Position below the right end
+        self.label_b.setPos(self._scale - 8, 15)
+        self.scene.addItem(self.label_b)
 
     def _create_dot(self):
         """Create the position indicator dot."""
@@ -148,7 +145,8 @@ class CoyoteThreePhaseWidget(QGraphicsView):
             return  # Skip drawing to save CPU cycles
         self.last_state = state
 
-        self._set_dot_position(alpha)
+        # Invert alpha to match the mirrored label layout (A on left, B on right)
+        self._set_dot_position(-alpha)
 
     def mousePressEvent(self, event: QMouseEvent):
         self._handle_mouse_event(event)
@@ -170,8 +168,8 @@ class CoyoteThreePhaseWidget(QGraphicsView):
         # Map screen position to scene coordinates
         scene_pos = self.mapToScene(event.pos())
 
-        # Convert x to alpha
-        alpha = self._x_to_alpha(scene_pos.x())
+        # Convert x to alpha, then invert to match mirrored layout (A on left, B on right)
+        alpha = -self._x_to_alpha(scene_pos.x())
 
         # For Coyote three-phase mode, we emit the alpha position with beta=0
         # since beta is ignored by the algorithm anyway
