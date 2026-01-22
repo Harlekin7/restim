@@ -273,6 +273,22 @@ class CoyoteDevice(OutputDevice, QObject):
         except Exception as e:
             logger.debug(f"{LOG_PREFIX} Failed to read battery level: {e}")
 
+    async def _override_hardware_strength(self):
+        """Override hardware button strength changes with our desired software strength.
+
+        This is a safety feature - hardware buttons on the device should not be able
+        to change the strength without the software's knowledge/consent.
+        """
+        try:
+            if not self.client or not self.client.is_connected:
+                return
+
+            # Send our desired strength back to the device to override hardware button change
+            await self.send_command(strengths=self.strengths)
+            logger.info(f"{LOG_PREFIX} Sent override command: A={self.strengths.channel_a}, B={self.strengths.channel_b}")
+        except Exception as e:
+            logger.warning(f"{LOG_PREFIX} Failed to override hardware strength: {e}")
+
     async def _handle_status_notification(self, sender, data: bytearray):
         """Handle incoming status notifications from the device."""
 
@@ -286,10 +302,19 @@ class CoyoteDevice(OutputDevice, QObject):
         power_b = data[3]
 
         if command_id == CMD_POWER_UPDATE:
-            logger.info(f"{LOG_PREFIX} Power level update (seq={sequence_number}) - Channel A: {power_a}, Channel B: {power_b}")
-            self.strengths.channel_a = power_a
-            self.strengths.channel_b = power_b
-            self.power_levels_changed.emit(self.strengths)
+            if sequence_number == 0:
+                # sequence_number = 0 means this change came from hardware buttons, not our command
+                # For safety, we override hardware button changes with our desired strength
+                logger.warning(f"{LOG_PREFIX} Hardware button detected (seq=0) - overriding with software strength. "
+                              f"Device reported: A={power_a}, B={power_b}, Software wants: A={self.strengths.channel_a}, B={self.strengths.channel_b}")
+                # Schedule immediate override command to restore our desired strength
+                asyncio.create_task(self._override_hardware_strength())
+            else:
+                # sequence_number > 0 means this is a response to our command - update our state
+                logger.info(f"{LOG_PREFIX} Power level confirmed (seq={sequence_number}) - Channel A: {power_a}, Channel B: {power_b}")
+                self.strengths.channel_a = power_a
+                self.strengths.channel_b = power_b
+                self.power_levels_changed.emit(self.strengths)
 
         elif command_id == CMD_ACK:
             logger.debug(f"{LOG_PREFIX} Command acknowledged (seq={sequence_number})")
