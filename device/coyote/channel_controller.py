@@ -54,7 +54,11 @@ class ChannelController:
 
         added: List[CoyotePulse] = []
         seq_index = 0
-        while end_time < horizon_end or len(self._queue) < PULSES_PER_PACKET:
+        # Limit iterations to prevent blocking when catching up after a pause/delay
+        # With 5ms min pulse duration and 750ms horizon, max ~150 pulses needed
+        # Cap at 32 pulses per call (enough for 2 packets) to keep loop responsive
+        max_pulses = 32
+        while (end_time < horizon_end or len(self._queue) < PULSES_PER_PACKET) and seq_index < max_pulses:
             pulse_time = end_time
             pulse, debug = self._generate_pulse(pulse_time, seq_index)
             self._queue.append(pulse)

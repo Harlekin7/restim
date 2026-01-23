@@ -188,6 +188,23 @@ class PulseSettingsWidget(QtWidgets.QWidget):
         gb.setLayout(gb_l)
         l.addWidget(gb)
 
+        # Coyote-specific settings group
+        gb_coyote = QtWidgets.QGroupBox("Coyote Settings", self, checkable=False)
+        gb_coyote_l = QtWidgets.QFormLayout(gb_coyote)
+        gb_coyote_l.setObjectName("FormLayout coyote settings")
+
+        self.texture_checkbox = QtWidgets.QCheckBox("Enable texture modulation")
+        self.texture_checkbox.setToolTip(
+            "When enabled, applies texture/micro-variation to pulse timing for smoother sensations.\n"
+            "When disabled (default for Coyote), outputs cleaner square pulses."
+        )
+        self.texture_checkbox.setChecked(settings.coyote_enable_texture.get())
+        self.texture_checkbox.stateChanged.connect(self._on_texture_checkbox_changed)
+        gb_coyote_l.addRow(self.texture_checkbox)
+
+        gb_coyote.setLayout(gb_coyote_l)
+        l.addWidget(gb_coyote)
+
         self.carrier = carrier_slider
         self.pulse_freq_slider = pulse_freq_slider
         self.pulse_width_slider = pulse_width_slider
@@ -245,3 +262,8 @@ class PulseSettingsWidget(QtWidgets.QWidget):
         settings.pulse_width.set(self.pulse_width_controller.last_user_entered_value)
         settings.pulse_interval_random.set(self.pulse_interval_random_controller.last_user_entered_value * 100)
         settings.pulse_rise_time.set(self.pulse_rise_time_controller.last_user_entered_value)
+        settings.coyote_enable_texture.set(self.texture_checkbox.isChecked())
+
+    def _on_texture_checkbox_changed(self, state):
+        """Save texture setting immediately when changed."""
+        settings.coyote_enable_texture.set(state == QtCore.Qt.Checked)

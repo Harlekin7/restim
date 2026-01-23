@@ -5,6 +5,7 @@ import logging
 from PySide6.QtCore import QObject
 
 from net.media_source.interface import MediaSourceInterface, MediaConnectionState
+from qt_ui import settings
 
 logger = logging.getLogger('restim.media')
 
@@ -140,11 +141,15 @@ class MediaSource(QObject, MediaSourceInterface, metaclass=A):
             self.connectionStatusChanged.emit()
 
     def map_timestamp(self, timestamp):
+        # Get sync offset in seconds (positive = delay signal, negative = advance signal)
+        offset_s = settings.media_sync_offset_ms.get() / 1000.0
+
         if self.is_playing():
             adj_timestamp = timestamp - self.last_state.media_play_timestamp + self.last_state.cursor
-            return adj_timestamp
+            # Subtract offset: positive offset makes signal delayed (reads earlier in funscript)
+            return adj_timestamp - offset_s
         else:
-            return timestamp - timestamp + self.last_state.cursor
+            return timestamp - timestamp + self.last_state.cursor - offset_s
 
     def media_path(self) -> str:
         return self.last_state.filePath

@@ -46,6 +46,7 @@ class CoyoteDevice(OutputDevice, QObject):
         self.running = False
         self.connection_stage = ConnectionStage.DISCONNECTED
         self.strengths = CoyoteStrengths(channel_a=0, channel_b=0)
+        self._last_sent_strengths = CoyoteStrengths(channel_a=-1, channel_b=-1)  # Track last sent to device
         self.battery_level = 100
         self.parameters = None
         self._event_loop = None
@@ -190,7 +191,7 @@ class CoyoteDevice(OutputDevice, QObject):
                         await self._read_battery_level()
                         self._last_battery_poll = current_time
 
-                    if current_time - self._last_parameter_resend >= 5:
+                    if current_time - self._last_parameter_resend >= 30:
                         await self._send_parameters()
                         self._last_parameter_resend = current_time
 
@@ -310,11 +311,11 @@ class CoyoteDevice(OutputDevice, QObject):
                 # Schedule immediate override command to restore our desired strength
                 asyncio.create_task(self._override_hardware_strength())
             else:
-                # sequence_number > 0 means this is a response to our command - update our state
-                logger.info(f"{LOG_PREFIX} Power level confirmed (seq={sequence_number}) - Channel A: {power_a}, Channel B: {power_b}")
-                self.strengths.channel_a = power_a
-                self.strengths.channel_b = power_b
-                self.power_levels_changed.emit(self.strengths)
+                # sequence_number > 0 means this is a response to our command
+                # Only log at debug level to avoid console spam while moving sliders
+                logger.debug(f"{LOG_PREFIX} Power level confirmed (seq={sequence_number}) - Channel A: {power_a}, Channel B: {power_b}")
+                # Don't update self.strengths or emit signal - the UI already tracks the desired value
+                # This prevents slider jumping caused by confirmation latency
 
         elif command_id == CMD_ACK:
             logger.debug(f"{LOG_PREFIX} Command acknowledged (seq={sequence_number})")
@@ -378,16 +379,22 @@ class CoyoteDevice(OutputDevice, QObject):
     async def _send_reset_command(self):
         """Send B0 command with both channels set to 0 power for safety on connection"""
         try:
-            # Build B0 command: reset both channels to 0 power
+            # Build B0 command: reset both channels to 0 power with ABSOLUTE_SET interpretation
+            # Control byte: (seq << 4) | (interp_a << 2) | interp_b
+            # seq=0, interp_a=ABSOLUTE_SET(0b11), interp_b=ABSOLUTE_SET(0b11) = 0x0F
+            control_byte = (INTERP_ABSOLUTE_SET << 2) | INTERP_ABSOLUTE_SET
             command = bytes([
                 CMD_B0,         # Command ID 0xB0
-                0x00,           # Sequence number 0 + no interpretation change (0b0000)
+                control_byte,   # Sequence 0 + ABSOLUTE_SET for both channels
                 0,              # Channel A strength = 0
                 0,              # Channel B strength = 0
             ] + [0] * B0_NO_PULSES_PAD_BYTES)  # Padding for no pulses
 
             logger.info(f"{LOG_PREFIX} Sending reset command to set both channels to 0 power")
             await self.client.write_gatt_char(WRITE_CHAR_UUID, command)
+            # Update tracking to match what we just sent
+            self._last_sent_strengths.channel_a = 0
+            self._last_sent_strengths.channel_b = 0
         except Exception as e:
             logger.warning(f"{LOG_PREFIX} Failed to send reset command: {e}")
 
@@ -558,13 +565,14 @@ class CoyoteDevice(OutputDevice, QObject):
         if self.client:
             self.running = False
 
-            # Send zero pulses to turn off outputs
+            # Send zero pulses and zero strength to turn off outputs
             try:
                 zero_pulses = CoyotePulses(
                     channel_a=[CoyotePulse(frequency=0, intensity=0, duration=0)] * PULSES_PER_PACKET,
                     channel_b=[CoyotePulse(frequency=0, intensity=0, duration=0)] * PULSES_PER_PACKET
                 )
-                await self.send_command(pulses=zero_pulses)
+                zero_strengths = CoyoteStrengths(channel_a=0, channel_b=0)
+                await self.send_command(strengths=zero_strengths, pulses=zero_pulses)
             except Exception as e:
                 logger.debug(f"{LOG_PREFIX} Error sending zero pulses during disconnect: {e}")
 
@@ -608,8 +616,6 @@ class CoyoteDevice(OutputDevice, QObject):
         logger.info(f"{LOG_PREFIX} Starting update loop, running={self.running}, algorithm={self.algorithm}")
         self._update_loop_running = True
         self._update_loop_last_heartbeat = time.time()
-        last_battery_read = time.time()
-        battery_read_interval = 5.0  # Read battery every 5 seconds
 
         try:
             logger.info(f"{LOG_PREFIX} Update loop started, running={self.running}")
@@ -627,39 +633,46 @@ class CoyoteDevice(OutputDevice, QObject):
                     current_time = time.time()
                     is_connected = self.connection_stage == ConnectionStage.CONNECTED
 
-                    # Periodically read battery level (only when connected)
-                    if is_connected and current_time - last_battery_read >= battery_read_interval:
-                        await self._read_battery_level()
-                        last_battery_read = current_time
-
-                    # If paused, send keep-alive packets with 0 intensity but don't generate pulses
+                    # If paused, only send strength updates if they've changed
                     if self._paused:
-                        # Send keep-alive with no pulses (0 intensity keeps device alive without output)
-                        # Mark as keep-alive to skip debug logging spam - only when connected
                         if is_connected:
-                            await self.send_command(pulses=None, is_keep_alive=True)
-                        sleep_time = 0.1
-                        await asyncio.sleep(sleep_time)
+                            strengths_changed = (self.strengths.channel_a != self._last_sent_strengths.channel_a or
+                                                 self.strengths.channel_b != self._last_sent_strengths.channel_b)
+                            if strengths_changed:
+                                await self.send_command(strengths=self.strengths, pulses=None, is_keep_alive=True)
+                                self._last_sent_strengths.channel_a = self.strengths.channel_a
+                                self._last_sent_strengths.channel_b = self.strengths.channel_b
+                        await asyncio.sleep(0.1)
                         continue
 
-                    # Only log when a packet is actually generated and sent
+                    # Generate and send packet when it's time
                     if current_time >= self.algorithm.next_update_time:
                         pulses = self.algorithm.generate_packet(current_time)
                         if pulses is not None:
-                            await self.send_command(pulses=pulses)
-                        # Check if algorithm still exists after generate_packet()
-                        if self.algorithm:
-                            sleep_time = max(0.001, self.algorithm.next_update_time - time.time())
-                        else:
-                            sleep_time = 0.01
+                            # Only include strengths if they've changed (avoids ACK delays on every packet)
+                            strengths_changed = (self.strengths.channel_a != self._last_sent_strengths.channel_a or
+                                                 self.strengths.channel_b != self._last_sent_strengths.channel_b)
+                            if strengths_changed:
+                                await self.send_command(strengths=self.strengths, pulses=pulses)
+                                self._last_sent_strengths.channel_a = self.strengths.channel_a
+                                self._last_sent_strengths.channel_b = self.strengths.channel_b
+                            else:
+                                await self.send_command(pulses=pulses)
+
+                    # Calculate sleep time based on when next packet is needed
+                    # Use tight timing to avoid gaps in output
+                    if self.algorithm:
+                        time_until_next = self.algorithm.next_update_time - time.time()
+                        # Sleep for at most 5ms to maintain responsive timing
+                        sleep_time = max(0.001, min(0.005, time_until_next))
                     else:
-                        sleep_time = 0.01
+                        sleep_time = 0.005
 
                     await asyncio.sleep(sleep_time)
 
                 except Exception as inner_e:
                     logger.exception(f"{LOG_PREFIX} Exception inside update loop iteration: {inner_e}")
-                    await asyncio.sleep(0.1)  # prevent tight-crash-loop
+                    await asyncio.sleep(0.01)  # Brief pause to prevent tight-crash-loop (10ms instead of 100ms)
 
         except Exception as outer_e:
             logger.exception(f"{LOG_PREFIX} Fatal exception in update_loop: {outer_e}")

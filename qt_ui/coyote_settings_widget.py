@@ -4,10 +4,10 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 from PySide6 import QtWidgets
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QSlider, QHBoxLayout,
-                            QGraphicsView, QGraphicsScene, QGraphicsLineItem, QSpinBox,
-                            QGraphicsRectItem, QToolTip, QGraphicsEllipseItem)
+                            QGraphicsView, QGraphicsScene, QSpinBox,
+                            QGraphicsRectItem)
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QPen, QColor, QBrush
+from PySide6.QtGui import QPen, QColor, QBrush, QFontMetrics
 from device.coyote.device import CoyoteDevice, CoyotePulse, CoyotePulses, CoyoteStrengths
 from qt_ui import settings
 from qt_ui.theme_manager import ThemeManager
@@ -147,7 +147,11 @@ class ChannelControl:
     def build_ui(self) -> QHBoxLayout:
         layout = QHBoxLayout()
 
-        left = QVBoxLayout()
+        # Left column with fixed width to prevent graph shifts
+        left_widget = QWidget()
+        left_widget.setFixedWidth(140)
+        left = QVBoxLayout(left_widget)
+        left.setContentsMargins(0, 0, 0, 0)
         left.addWidget(QLabel(f"Channel {self.channel_id}"))
 
         freq_min_layout = QHBoxLayout()
@@ -180,7 +184,7 @@ class ChannelControl:
         strength_layout.addWidget(self.strength_max)
         left.addLayout(strength_layout)
 
-        layout.addLayout(left)
+        layout.addWidget(left_widget)
 
         self.pulse_graph = PulseGraphContainer(self.parent.graph_window, self.freq_min, self.freq_max)
         self.pulse_graph.plot.setMinimumHeight(100)
@@ -201,6 +205,11 @@ class ChannelControl:
         self.volume_slider.valueChanged.connect(self.on_volume_changed)
         self.volume_label = QLabel()
         self.volume_label.setAlignment(Qt.AlignHCenter)
+        # Set minimum width to prevent layout shifts when text changes
+        # "200 (100%)" is the maximum text, use font metrics to calculate width
+        fm = QFontMetrics(self.volume_label.font())
+        min_width = fm.horizontalAdvance("200 (100%)") + 4  # Add small padding
+        self.volume_label.setMinimumWidth(min_width)
         volume_layout.addWidget(self.volume_slider)
         volume_layout.addWidget(self.volume_label)
         layout.addLayout(volume_layout)
@@ -432,11 +441,11 @@ class PulseGraph(QWidget):
         # Completely disable scrolling and user interaction
         self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.view.setInteractive(True)  # Enable interaction for tooltips
+        self.view.setInteractive(False)  # Disable interaction for performance
         self.view.setDragMode(QGraphicsView.NoDrag)
         self.view.setTransformationAnchor(QGraphicsView.NoAnchor)
         self.view.setResizeAnchor(QGraphicsView.NoAnchor)
-        self.view.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
+        self.view.setViewportUpdateMode(QGraphicsView.MinimalViewportUpdate)
 
         # Prevent wheel events
         self.view.wheelEvent = lambda event: None
@@ -453,14 +462,17 @@ class PulseGraph(QWidget):
         # Packet tracking for FIFO visualization
         self.current_packet_index = 0  # Which 4-pulse packet is currently active
         self.last_packet_time = 0     # When the last packet was received
-        self.pulse_fingerprints = {}  # Track pulse fingerprints to avoid duplicates
+
+        # Track if we need to refresh (dirty flag)
+        self._dirty = False
+        self._last_refresh_time = 0
 
         # Initialize the scene size
         self.updateSceneRect()
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.refresh)
-        self.timer.start(16)  # ~60Hz refresh rate for responsive visualization
+        self.timer.start(50)  # 20Hz refresh rate (was 60Hz) - sufficient for visualization
 
         # Colors for visualization
         self.pulse_color = QColor(0, 255, 0, 200)  # Semi-transparent lime
@@ -477,8 +489,8 @@ class PulseGraph(QWidget):
         """Handle resize events by updating the scene rectangle"""
         super().resizeEvent(event)
         self.updateSceneRect()
-        # Force a refresh after resize
-        self.refresh()
+        # Mark dirty to force refresh on next timer tick
+        self._dirty = True
     
     def updateSceneRect(self):
         """Update the scene rectangle to match the view size"""
@@ -486,10 +498,6 @@ class PulseGraph(QWidget):
             width = self.view.viewport().width()
             height = self.view.viewport().height()
             self.view.setSceneRect(0, 0, width, height)
-    
-    def get_pulse_fingerprint(self, pulse: CoyotePulse) -> str:
-        """Generate a fingerprint for a pulse to detect duplicates"""
-        return f"{pulse.frequency}_{pulse.intensity}_{pulse.duration}"
     
     def get_color_for_frequency(self, frequency: float) -> QColor:
         """
@@ -526,12 +534,10 @@ class PulseGraph(QWidget):
         """Remove pulses outside the time window"""
         current_time = time.time()
         time_window = self.time_window.get()
+        old_count = len(self.pulses)
         self.pulses = [p for p in self.pulses if current_time - p.timestamp <= time_window]
-        
-        # Also clean up old fingerprints
-        for fingerprint, timestamp in list(self.pulse_fingerprints.items()):
-            if current_time - timestamp > time_window:
-                self.pulse_fingerprints.pop(fingerprint)
+        if len(self.pulses) != old_count:
+            self._dirty = True
 
     def add_pulse(self, pulse: CoyotePulse, applied_intensity: float, channel_limit: int):
         """Add a new pulse to the visualization"""
@@ -540,27 +546,44 @@ class PulseGraph(QWidget):
 
         # Show every pulse - no deduplication
         current_time = time.time()
-        
+
         # Store the CoyotePulse with additional metadata
         pulse_copy = CoyotePulse(
             frequency=pulse.frequency,
             intensity=pulse.intensity,
             duration=pulse.duration
         )
-        
+
         # Add additional attributes to the pulse
         pulse_copy.applied_intensity = applied_intensity
         pulse_copy.packet_index = self.current_packet_index
         pulse_copy.timestamp = current_time
-        
+
         # Add the pulse
         self.pulses.append(pulse_copy)
-        
-        # Clean up old pulses that are outside our time window
-        self.clean_old_pulses()
+        self._dirty = True
+
+        # Clean up old pulses that are outside our time window (periodically)
+        if len(self.pulses) > 200:  # Only clean when list gets large
+            self.clean_old_pulses()
 
     def refresh(self):
         """Redraw the pulse visualization"""
+        # Skip refresh if widget is not visible
+        if not self.isVisible():
+            return
+
+        # Skip refresh if nothing changed and we refreshed recently
+        now = time.time()
+        if not self._dirty and (now - self._last_refresh_time) < 0.1:
+            return
+
+        self._dirty = False
+        self._last_refresh_time = now
+
+        # Clean up old pulses periodically
+        self.clean_old_pulses()
+
         self.scene.clear()
 
         # Always ensure we're using the current viewport size
@@ -569,34 +592,26 @@ class PulseGraph(QWidget):
         width = self.view.viewport().width()
         height = self.view.viewport().height()
 
-        # Clean up old pulses again (in case the timer fired without any new pulses added)
-        self.clean_old_pulses()
-
         if not self.pulses:
             return
 
         # Sort pulses by timestamp so they display in chronological order
         sorted_pulses = sorted(self.pulses, key=lambda p: p.timestamp)
-        
+
         # Find the maximum intensity in current visible pulses
         max_intensity = max(pulse.applied_intensity for pulse in sorted_pulses)
         # Use either the channel limit or the current max intensity, whichever is larger
         scale_max = max(max_intensity, self.channel_limit)
-        
+
         # Get the time span of the visible pulses
-        now = time.time()
         time_window = self.time_window.get()
         oldest_time = now - time_window
         newest_time = now
         time_span_sec = time_window
-        
+
         # Calculate total width available for all pulses
         usable_width = width - 10  # Leave small margin on right side
-        
-        # Scale based on the time window, not the pulse count
-        # This ensures consistent scaling regardless of pulse frequency
-        time_scale = usable_width / (time_span_sec * 1000)  # Convert to ms
-        
+
         # Group pulses by packet for continuous display
         pulses_by_packet = {}
         for pulse in sorted_pulses:
@@ -604,29 +619,29 @@ class PulseGraph(QWidget):
             if packet_idx not in pulses_by_packet:
                 pulses_by_packet[packet_idx] = []
             pulses_by_packet[packet_idx].append(pulse)
-        
+
         # Get sorted list of packet indices
         packet_indices = sorted(pulses_by_packet.keys())
-        
+
         # Draw each packet's pulses as a continuous sequence
         for i, packet_idx in enumerate(packet_indices):
-            packet_pulses = sorted(pulses_by_packet[packet_idx], key=lambda p: p.timestamp)
-            
+            packet_pulses = pulses_by_packet[packet_idx]  # Already sorted by timestamp from earlier
+
             # Determine the time range this packet covers
             if i < len(packet_indices) - 1:
                 # This packet runs until the next packet starts
                 next_packet_idx = packet_indices[i + 1]
-                next_packet_start = min(p.timestamp for p in pulses_by_packet[next_packet_idx])
+                next_packet_start = pulses_by_packet[next_packet_idx][0].timestamp
                 packet_end_time = next_packet_start
             else:
                 # This is the last packet, it runs until now
                 packet_end_time = now
-            
+
             # Draw each pulse in this packet
             for j, pulse in enumerate(packet_pulses):
                 # Calculate time positions
                 pulse_start_time = pulse.timestamp
-                
+
                 # For continuity, calculate the end time:
                 if j < len(packet_pulses) - 1:
                     # If there's another pulse in this packet, it extends to that pulse
@@ -634,24 +649,28 @@ class PulseGraph(QWidget):
                 else:
                     # If this is the last pulse in the packet, it extends to the packet end
                     pulse_end_time = packet_end_time
-                
+
                 # Ensure we're within the visible time window
                 pulse_start_time = max(pulse_start_time, oldest_time)
                 pulse_end_time = min(pulse_end_time, newest_time)
-                
+
+                # Skip if entirely outside window
+                if pulse_end_time <= oldest_time or pulse_start_time >= newest_time:
+                    continue
+
                 # Calculate positions and dimensions
                 time_position_start = (pulse_start_time - oldest_time) / time_span_sec
                 time_position_end = (pulse_end_time - oldest_time) / time_span_sec
-                
+
                 x_start = 5 + (time_position_start * usable_width)
                 x_end = 5 + (time_position_end * usable_width)
                 rect_width = max(3, min(6, x_end - x_start))  # Keep bars narrow (3-6 pixels)
-                
+
                 # Calculate height based on intensity (always define rect_height)
                 height_ratio = pulse.applied_intensity / scale_max if scale_max > 0 else 0
                 rect_height = height * height_ratio
-                
-                # Get color based on frequency - applies smoothly for both increasing and decreasing frequencies
+
+                # Get color based on frequency
                 pulse_color = self.get_color_for_frequency(pulse.frequency)
 
                 # For zero-intensity pulses, still show something to indicate timing
@@ -664,39 +683,13 @@ class PulseGraph(QWidget):
                     empty_rect.setBrush(QBrush(QColor(100, 100, 100, 50)))  # Almost transparent
                     self.scene.addItem(empty_rect)
                 else:
-                    # Create rectangle for the pulse
-                    rect = PulseRectItem(
+                    # Create simple rectangle for the pulse (no hover events for performance)
+                    rect = QGraphicsRectItem(
                         x_start, height - rect_height,  # x, y (bottom-aligned)
-                        rect_width, rect_height,        # width, height
-                        pulse                           # pass pulse data for tooltip
+                        rect_width, rect_height         # width, height
                     )
-                    
                     rect.setBrush(QBrush(pulse_color))
-                    
-                    # Add rectangle to scene
                     self.scene.addItem(rect)
-                
-                # Draw frequency tick marks for visualization
-                if pulse.frequency > 0 and rect_width > 10:
-                    # Number of ticks based on frequency (higher frequency = more ticks)
-                    num_ticks = min(max(2, int(pulse.frequency / 20)), 8)  # 2-8 ticks
-                    
-                    tick_spacing = rect_width / (num_ticks + 1)
-                    tick_height = rect_height * 0.4  # 40% of rectangle height
-                    
-                    for t in range(1, num_ticks + 1):
-                        tick_x = x_start + (t * tick_spacing)
-                        tick_y = height - rect_height
-                        
-                        # Draw tick mark
-                        tick = QGraphicsLineItem(
-                            tick_x, tick_y,              # Start at top of rectangle
-                            tick_x, tick_y + tick_height  # Go down
-                        )
-                        # Use a contrasting color for tick marks on colored pulses
-                        tick_color = QColor(255, 255, 255) if not ThemeManager.instance().is_dark_mode() else QColor(200, 200, 200)
-                        tick.setPen(QPen(tick_color, 1))
-                        self.scene.addItem(tick)
 
     def _update_background_brush(self):
         """Update background brush based on current theme."""
@@ -705,7 +698,7 @@ class PulseGraph(QWidget):
     def _on_theme_changed(self, is_dark: bool):
         """Handle theme change."""
         self._update_background_brush()
-        self.refresh()
+        self._dirty = True
 
     def cleanup(self):
         """Stop the timer to prevent errors on close"""
@@ -713,30 +706,3 @@ class PulseGraph(QWidget):
             self.timer.stop()
             self.timer.deleteLater()
             self.timer = None
-
-class PulseRectItem(QGraphicsRectItem):
-    def __init__(self, x, y, width, height, pulse):
-        super().__init__(x, y, width, height)
-        self.pulse = pulse
-        self.setAcceptHoverEvents(True)
-        
-    def hoverEnterEvent(self, event):
-        # Show tooltip with pulse information
-        freq = self.pulse.frequency
-        intensity = self.pulse.intensity
-        duration = self.pulse.duration
-        
-        tooltip_text = f"Frequency: {freq} Hz\nIntensity: {intensity}%\nDuration: {duration} ms"
-        QToolTip.showText(event.screenPos(), tooltip_text)
-        
-        # Change appearance on hover
-        current_pen = self.pen()
-        current_pen.setWidth(2)  # Make border thicker
-        self.setPen(current_pen)
-        
-    def hoverLeaveEvent(self, event):
-        # Restore original appearance
-        current_pen = self.pen()
-        current_pen.setWidth(1)  # Restore original border width
-        self.setPen(current_pen)
-        

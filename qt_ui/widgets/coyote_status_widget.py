@@ -6,10 +6,38 @@ Only visible when in Coyote device mode.
 """
 
 from typing import Optional
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGroupBox
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGroupBox, QSizePolicy, QSpinBox
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFontMetrics
 
 from device.coyote.device import CoyoteDevice
+from device.coyote.types import ConnectionStage
+from qt_ui import settings
+
+
+class ElidedLabel(QLabel):
+    """A QLabel that elides text with '...' when it doesn't fit."""
+
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self._full_text = text
+
+    def setText(self, text: str):
+        self._full_text = text
+        self._update_elided_text()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_elided_text()
+
+    def _update_elided_text(self):
+        # Don't elide if widget hasn't been laid out yet
+        if self.width() <= 0:
+            super().setText(self._full_text)
+            return
+        metrics = QFontMetrics(self.font())
+        elided = metrics.elidedText(self._full_text, Qt.ElideRight, self.width())
+        super().setText(elided)
 
 
 class CoyoteStatusWidget(QGroupBox):
@@ -31,9 +59,12 @@ class CoyoteStatusWidget(QGroupBox):
         status_layout = QHBoxLayout()
         status_layout.setSpacing(8)
 
-        self.label_device = QLabel("Disconnected")
-        self.label_stage = QLabel("—")
-        self.label_battery = QLabel("—")
+        self.label_device = ElidedLabel("Disconnected")
+        self.label_device.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.label_stage = ElidedLabel("—")
+        self.label_stage.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.label_battery = ElidedLabel("—")
+        self.label_battery.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         status_layout.addWidget(QLabel("Device:"))
         status_layout.addWidget(self.label_device)
@@ -58,6 +89,30 @@ class CoyoteStatusWidget(QGroupBox):
         self.button_reset.clicked.connect(self._on_reset_clicked)
         layout.addWidget(self.button_reset)
 
+        # Media sync offset for Bluetooth latency compensation
+        offset_layout = QHBoxLayout()
+        offset_layout.setSpacing(4)
+        offset_label = QLabel("Sync Offset:")
+        offset_label.setToolTip(
+            "Compensate for Bluetooth latency when syncing with media players.\n"
+            "Positive values delay the signal, negative values advance it.\n"
+            "Typical range: -500ms to +500ms"
+        )
+        self.offset_spinbox = QSpinBox()
+        self.offset_spinbox.setRange(-2000, 2000)
+        self.offset_spinbox.setSingleStep(10)
+        self.offset_spinbox.setSuffix(" ms")
+        self.offset_spinbox.setValue(settings.media_sync_offset_ms.get())
+        self.offset_spinbox.setToolTip(
+            "Compensate for Bluetooth latency when syncing with media players.\n"
+            "Positive values delay the signal, negative values advance it."
+        )
+        self.offset_spinbox.valueChanged.connect(self._on_offset_changed)
+        offset_layout.addWidget(offset_label)
+        offset_layout.addWidget(self.offset_spinbox)
+        offset_layout.addStretch()
+        layout.addLayout(offset_layout)
+
     def set_device(self, device: Optional[CoyoteDevice]):
         """Connect to a Coyote device and listen for status updates."""
         # Disconnect from previous device
@@ -74,7 +129,7 @@ class CoyoteStatusWidget(QGroupBox):
             device.connection_status_changed.connect(self._on_connection_status_changed)
             device.battery_level_changed.connect(self._on_battery_level_changed)
             # Update with current state
-            is_connected = device.connection_stage == "CONNECTED"
+            is_connected = device.connection_stage == ConnectionStage.CONNECTED
             self._update_connection_display(is_connected, device.connection_stage)
             # Only show battery if connected
             if is_connected:
@@ -109,7 +164,7 @@ class CoyoteStatusWidget(QGroupBox):
     def _on_battery_level_changed(self, level: int):
         """Handle battery level changes."""
         # Only show battery level if we have a connected device
-        if self.device and self.device.connection_stage == "CONNECTED":
+        if self.device and self.device.connection_stage == ConnectionStage.CONNECTED:
             self.label_battery.setText(f"{level}%")
         else:
             self.label_battery.setText("—")
@@ -118,6 +173,10 @@ class CoyoteStatusWidget(QGroupBox):
         """Handle reset button click."""
         if self.device:
             self.device.reset_connection()
+
+    def _on_offset_changed(self, value: int):
+        """Handle sync offset change."""
+        settings.media_sync_offset_ms.set(value)
 
     def cleanup(self):
         """Disconnect from device when cleaning up."""

@@ -16,6 +16,7 @@ from device.coyote.constants import (
 )
 from device.coyote.types import CoyotePulse
 from stim_math.audio_gen.params import CoyoteAlgorithmParams, CoyoteChannelParams
+from qt_ui import settings as ui_settings
 
 logger = logging.getLogger("restim.coyote")
 
@@ -60,6 +61,7 @@ class PulseGenerator:
         pulse_freq_limits: Tuple[float, float],
         pulse_width_limits: Tuple[float, float],
         tuning: PulseTuning,
+        skip_texture_and_residual: bool = False,
     ) -> None:
         self.name = name
         self.params = params
@@ -68,6 +70,7 @@ class PulseGenerator:
         self._pulse_freq_limits = pulse_freq_limits
         self._pulse_width_limits = pulse_width_limits
         self._tuning = tuning
+        self._skip_texture_and_residual = skip_texture_and_residual
 
         self._phase = 0.0
         self._residual_ms = 0.0
@@ -86,6 +89,7 @@ class PulseGenerator:
         min_freq, max_freq = self._channel_frequency_window()
         duration_limits = self._duration_limits(min_freq, max_freq)
 
+        # Get pulse frequency directly and map to channel's frequency range
         raw_frequency = float(self.params.pulse_frequency.interpolate(time_s))
         normalised = normalize(raw_frequency, self._pulse_freq_limits)
         mapped_frequency = min_freq + (max_freq - min_freq) * normalised
@@ -100,11 +104,24 @@ class PulseGenerator:
         )
         jitter_factor = 1.0 + random.uniform(-jitter_fraction, jitter_fraction)
 
-        width_normalised = self._pulse_width_normalised(time_s)
-        texture_info = self._texture_offset(base_duration, width_normalised, min_freq, max_freq)
+        # Read texture setting dynamically so changes take effect immediately
+        skip_texture = not ui_settings.coyote_enable_texture.get()
 
-        desired_ms = base_duration * jitter_factor + texture_info.offset_ms
-        duration, residual = self._apply_residual(desired_ms)
+        # Skip texture and residual for Coyote modes (cleaner output)
+        if skip_texture:
+            width_normalised = 0.0
+            texture_info = TextureInfo(offset_ms=0.0, mode="none", headroom_up_ms=0.0, headroom_down_ms=0.0)
+            desired_ms = base_duration * jitter_factor
+            # Simple rounding without residual accumulation
+            duration = max(1, int(round(desired_ms)))
+            residual = 0.0
+            clamped = False
+        else:
+            width_normalised = self._pulse_width_normalised(time_s)
+            texture_info = self._texture_offset(base_duration, width_normalised, min_freq, max_freq)
+            desired_ms = base_duration * jitter_factor + texture_info.offset_ms
+            duration, residual = self._apply_residual(desired_ms)
+
         duration, clamped = self._clamp_duration(duration, duration_limits)
         if clamped:
             residual = 0.0
@@ -112,6 +129,17 @@ class PulseGenerator:
         final_duration = max(MIN_PULSE_DURATION_MS, duration)
         final_frequency = int(max(1, round(1000.0 / final_duration)))
         final_intensity = int(clamp(intensity, 0, 100))
+
+        # Advance phase based on this pulse's duration for smooth texture transitions
+        # This prevents the frequency oscillation that occurred when phase was only
+        # advanced once per update cycle (skip for Coyote modes)
+        if not skip_texture and self._tuning.texture_depth_fraction > 0:
+            pulse_duration_s = final_duration / 1000.0
+            # Use a moderate texture speed based on carrier frequency
+            carrier_hz = float(self.params.carrier_frequency.interpolate(time_s))
+            carrier_norm = normalize(carrier_hz, self._carrier_limits)
+            texture_speed = self._tuning.texture_min_hz + (self._tuning.texture_max_hz - self._tuning.texture_min_hz) * carrier_norm
+            self.advance_phase(texture_speed, pulse_duration_s)
 
         debug = PulseDebug(
             sequence_index=sequence_index,

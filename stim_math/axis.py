@@ -97,6 +97,7 @@ class ShortMemoryTimeline:
     def cleanup_if_needed(self):
         self.nonce += 1
         if self.nonce >= self.cleanup_interval:
+            self.nonce = 0  # Reset counter to prevent checking every call
             if self.data.shape[0] > self.trim_min_size and self.data[0][0] < (time.time() - self.trim_min_age):
                 cutoff = time.time() - self.trim_min_age
                 self.data = self.data[self.data[:, 0] > cutoff]

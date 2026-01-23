@@ -527,7 +527,7 @@ class Window(QMainWindow, Ui_MainWindow):
             self.output_device.start_updates()
         elif device.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
             # Handle Coyote device start
-            coyote_device = CoyoteDevice(device.settings.coyote_device_name.get())
+            coyote_device = CoyoteDevice(DEVICE_NAME)
             self.output_device = coyote_device
             self.output_device.start_updates()
 
@@ -619,11 +619,7 @@ class Window(QMainWindow, Ui_MainWindow):
         elif device.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
             # Create Coyote device if it doesn't exist
             if not self.output_device or not isinstance(self.output_device, CoyoteDevice):
-                device_name = qt_ui.settings.coyote_device_name.get()
-                if not device_name:
-                    logger.warning("Coyote device name not configured")
-                    return
-                self.output_device = CoyoteDevice(device_name)
+                self.output_device = CoyoteDevice(DEVICE_NAME)
                 # Set parameters from settings
                 self.output_device.parameters = CoyoteParams(
                     channel_a_limit=qt_ui.settings.coyote_channel_a_limit.get(),

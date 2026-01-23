@@ -62,7 +62,7 @@ import numpy as np
 
 from device.coyote.channel_controller import ChannelController
 from device.coyote.channel_state import ChannelState
-from device.coyote.common import normalize, split_seconds, volume_at
+from device.coyote.common import split_seconds, volume_at
 from device.coyote.config import PulseTuning, load_pulse_tuning
 from device.coyote.constants import PULSES_PER_PACKET
 from device.coyote.pulse_generator import PulseGenerator
@@ -96,6 +96,7 @@ class CoyoteAlgorithm:
         pulse_width_limits: Tuple[float, float],
         pulse_rise_time_limits: Tuple[float, float],
         tuning: Optional[PulseTuning] = None,
+        skip_texture_and_residual: bool = True,  # Skip for Coyote modes by default
     ) -> None:
         self.media = media
         self.params = params
@@ -108,7 +109,11 @@ class CoyoteAlgorithm:
 
         channels: List[ChannelPipeline] = []
         for name, channel_params in (("A", params.channel_a), ("B", params.channel_b)):
-            generator = PulseGenerator(name, params, channel_params, carrier_freq_limits, pulse_freq_limits, pulse_width_limits, self.tuning)
+            generator = PulseGenerator(
+                name, params, channel_params, carrier_freq_limits,
+                pulse_freq_limits, pulse_width_limits, self.tuning,
+                skip_texture_and_residual=skip_texture_and_residual
+            )
             controller = ChannelController(name, media, params, generator, self._positional_intensity, self.tuning)
             state = ChannelState()
             channels.append(ChannelPipeline(name, generator, controller, state))
@@ -127,10 +132,9 @@ class CoyoteAlgorithm:
 
         self._advance_state(current_time, delta_ms)
 
-        if not self._needs_packet():
-            self._schedule_from_remaining(current_time)
-            return None
-
+        # Always generate a packet when called - the update loop controls timing
+        # This prevents gaps that can occur when _needs_packet() returns False
+        # but we're already at or past the scheduled time
         for channel in self._channels:
             channel.controller.fill_queue(current_time)
 
@@ -148,7 +152,7 @@ class CoyoteAlgorithm:
         duration_b_ms = duration_map.get("B", 0)
 
         # Adaptive packet timing from voltmouse69:
-        # Schedule next update at 80% of the shortest packet duration
+        # Schedule next update at packet_margin (default 65%) of the shortest packet duration
         durations = [duration for duration in duration_map.values() if duration > 0]
         if not durations:
             durations = [1]
@@ -165,22 +169,14 @@ class CoyoteAlgorithm:
     def _needs_packet(self) -> bool:
         queue_low = any(not channel.controller.has_pulses(PULSES_PER_PACKET) for channel in self._channels)
         ready = any(channel.state.ready() for channel in self._channels)
-        return ready or queue_low
+        # Also send packet proactively if any channel is close to finishing (within 30ms)
+        # This prevents gaps caused by BLE latency or timing jitter
+        close_to_ready = any(channel.state.remaining_ms() < 30.0 for channel in self._channels)
+        return ready or queue_low or close_to_ready
 
     def _advance_state(self, current_time: float, delta_ms: float) -> None:
         for channel in self._channels:
             channel.state.advance(delta_ms)
-
-        delta_s = delta_ms / 1000.0
-        if delta_s <= 0:
-            return
-
-        carrier_hz = float(self.params.carrier_frequency.interpolate(current_time))
-        carrier_norm = normalize(carrier_hz, self._carrier_limits)
-        texture_speed = self.tuning.texture_min_hz + (self.tuning.texture_max_hz - self.tuning.texture_min_hz) * carrier_norm
-
-        for channel in self._channels:
-            channel.generator.advance_phase(texture_speed, delta_s)
 
     def _schedule_from_remaining(self, current_time: float) -> None:
         # Adaptive scheduling from voltmouse69: use remaining time in current packet
