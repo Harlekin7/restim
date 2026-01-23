@@ -202,6 +202,18 @@ class PulseSettingsWidget(QtWidgets.QWidget):
         self.texture_checkbox.stateChanged.connect(self._on_texture_checkbox_changed)
         gb_coyote_l.addRow(self.texture_checkbox)
 
+        self.texture_depth_spinbox = QtWidgets.QSpinBox()
+        self.texture_depth_spinbox.setRange(0, 100)
+        self.texture_depth_spinbox.setSingleStep(5)
+        self.texture_depth_spinbox.setSuffix("%")
+        self.texture_depth_spinbox.setValue(int(settings.coyote_texture_depth_fraction.get() * 100))
+        self.texture_depth_spinbox.setToolTip(
+            "How much texture modulation to apply.\n"
+            "Higher values create more variation in pulse timing."
+        )
+        self.texture_depth_spinbox.valueChanged.connect(self._on_texture_depth_changed)
+        gb_coyote_l.addRow("Texture depth:", self.texture_depth_spinbox)
+
         gb_coyote.setLayout(gb_coyote_l)
         l.addWidget(gb_coyote)
 
@@ -263,7 +275,13 @@ class PulseSettingsWidget(QtWidgets.QWidget):
         settings.pulse_interval_random.set(self.pulse_interval_random_controller.last_user_entered_value * 100)
         settings.pulse_rise_time.set(self.pulse_rise_time_controller.last_user_entered_value)
         settings.coyote_enable_texture.set(self.texture_checkbox.isChecked())
+        settings.coyote_texture_depth_fraction.set(self.texture_depth_spinbox.value() / 100.0)
 
     def _on_texture_checkbox_changed(self, state):
         """Save texture setting immediately when changed."""
-        settings.coyote_enable_texture.set(state == QtCore.Qt.Checked)
+        # Use isChecked() instead of comparing state with enum (PySide6 compatibility)
+        settings.coyote_enable_texture.set(self.texture_checkbox.isChecked())
+
+    def _on_texture_depth_changed(self, value):
+        """Save texture depth setting immediately when changed."""
+        settings.coyote_texture_depth_fraction.set(value / 100.0)

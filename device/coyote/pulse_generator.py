@@ -117,8 +117,10 @@ class PulseGenerator:
             residual = 0.0
             clamped = False
         else:
+            # Read texture depth dynamically so slider changes take effect immediately
+            texture_depth = float(ui_settings.coyote_texture_depth_fraction.get())
             width_normalised = self._pulse_width_normalised(time_s)
-            texture_info = self._texture_offset(base_duration, width_normalised, min_freq, max_freq)
+            texture_info = self._texture_offset(base_duration, width_normalised, min_freq, max_freq, texture_depth)
             desired_ms = base_duration * jitter_factor + texture_info.offset_ms
             duration, residual = self._apply_residual(desired_ms)
 
@@ -133,7 +135,8 @@ class PulseGenerator:
         # Advance phase based on this pulse's duration for smooth texture transitions
         # This prevents the frequency oscillation that occurred when phase was only
         # advanced once per update cycle (skip for Coyote modes)
-        if not skip_texture and self._tuning.texture_depth_fraction > 0:
+        texture_depth = float(ui_settings.coyote_texture_depth_fraction.get())
+        if not skip_texture and texture_depth > 0:
             pulse_duration_s = final_duration / 1000.0
             # Use a moderate texture speed based on carrier frequency
             carrier_hz = float(self.params.carrier_frequency.interpolate(time_s))
@@ -182,15 +185,16 @@ class PulseGenerator:
         width_norm: float,
         min_freq: float,
         max_freq: float,
+        texture_depth: float,
     ) -> TextureInfo:
-        if width_norm <= 0 or self._tuning.texture_depth_fraction <= 0:
+        if width_norm <= 0 or texture_depth <= 0:
             return TextureInfo(offset_ms=0.0, mode="none", headroom_up_ms=0.0, headroom_down_ms=0.0)
 
         min_duration = 1000.0 / max_freq
         max_duration = 1000.0 / min_freq
 
-        up_headroom = max(0.0, max_duration - base_duration) * self._tuning.texture_depth_fraction * width_norm
-        down_headroom = max(0.0, base_duration - min_duration) * self._tuning.texture_depth_fraction * width_norm
+        up_headroom = max(0.0, max_duration - base_duration) * texture_depth * width_norm
+        down_headroom = max(0.0, base_duration - min_duration) * texture_depth * width_norm
 
         if up_headroom > 1e-6 and down_headroom > 1e-6:
             amplitude = min(up_headroom, down_headroom)
