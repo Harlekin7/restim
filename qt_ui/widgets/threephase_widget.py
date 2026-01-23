@@ -7,6 +7,7 @@ from PySide6.QtCore import QPoint, QPointF
 from PySide6.QtWidgets import QGraphicsView, QGraphicsEllipseItem
 
 from qt_ui import resources
+from qt_ui.theme_manager import ThemeManager
 from stim_math.threephase_coordinate_transform import ThreePhaseCoordinateTransform, \
     ThreePhaseCoordinateTransformMapToEdge
 
@@ -41,8 +42,12 @@ class ThreephaseWidgetBase(QtWidgets.QGraphicsView):
         self.setScene(scene)
         self.scene = scene
         self.background_svg = None
+        self._current_stereo = True  # Track which mode we're in
         self.set_background(stereo=True)
-        self.setBackgroundBrush(Qt.white)
+        self._update_background_brush()
+
+        # Connect to theme changes
+        ThemeManager.instance().theme_changed.connect(self._on_theme_changed)
 
         self.setMouseTracking(True)
 
@@ -82,16 +87,38 @@ class ThreephaseWidgetBase(QtWidgets.QGraphicsView):
         if self.background_svg:
             self.scene.removeItem(self.background_svg)
 
+        # Track which mode we're using for theme switching
+        self._current_stereo = stereo
+
+        # Select the appropriate SVG based on theme
+        is_dark = ThemeManager.instance().is_dark_mode()
         if stereo:
-            self.background_svg = QtSvgWidgets.QGraphicsSvgItem(":/restim/phase diagram stereostim.svg")
+            if is_dark:
+                self.background_svg = QtSvgWidgets.QGraphicsSvgItem(":/restim/phase diagram stereostim dark.svg")
+            else:
+                self.background_svg = QtSvgWidgets.QGraphicsSvgItem(":/restim/phase diagram stereostim.svg")
         else:
-            self.background_svg = QtSvgWidgets.QGraphicsSvgItem(":/restim/phase diagram foc.svg")
+            if is_dark:
+                self.background_svg = QtSvgWidgets.QGraphicsSvgItem(":/restim/phase diagram foc dark.svg")
+            else:
+                self.background_svg = QtSvgWidgets.QGraphicsSvgItem(":/restim/phase diagram foc.svg")
 
         self.scene.addItem(self.background_svg)
         self.background_svg.setPos(
             -self.background_svg.boundingRect().width()/2.0,
             -self.background_svg.boundingRect().height()/2.0)
         self.background_svg.setZValue(-1)
+
+    def _update_background_brush(self):
+        """Update background brush based on current theme."""
+        self.setBackgroundBrush(ThemeManager.instance().get_color('background_graphics'))
+
+    def _on_theme_changed(self, is_dark: bool):
+        """Handle theme change."""
+        self._update_background_brush()
+        # Reload SVG with appropriate theme version
+        self.set_background(stereo=self._current_stereo)
+        self.update()
 
 
 class ThreephaseWidgetAlphaBeta(ThreephaseWidgetBase):
@@ -119,7 +146,7 @@ class ThreephaseWidgetAlphaBeta(ThreephaseWidgetBase):
         self.scene.addItem(self.arrow)
 
         self.border = QGraphicsEllipseItem(0, 0, 83, 83)
-        self.border.setPen(QColor.fromRgb(0, 0, 0))
+        self.border.setPen(ThemeManager.instance().get_color('cursor_border'))
         self.scene.addItem(self.border)
 
         self.arc = ArcSegment(center=QPointF(*ab_to_item_pos(0, 0)), radius=80)

@@ -10,6 +10,7 @@ from stim_math.axis import create_constant_axis
 
 from qt_ui import settings
 from qt_ui.axis_controller import AxisController, PercentAxisController
+from qt_ui.theme_manager import ThemeManager
 
 
 class ABTestWidget(QtWidgets.QWidget, Ui_ABTestWidget):
@@ -106,7 +107,8 @@ class ABTestWidget(QtWidgets.QWidget, Ui_ABTestWidget):
                 control.setStyleSheet('')
                 control.setText(f'{duty_cycle:.0%}')
             else:
-                control.setStyleSheet('color: red')
+                error_color = ThemeManager.instance().get_color_css('error')
+                control.setStyleSheet(f'color: {error_color}')
                 control.setText(f'{1:.0%}')
 
         set_duty_cycle(
@@ -130,11 +132,12 @@ class ABTestWidget(QtWidgets.QWidget, Ui_ABTestWidget):
 
     def highlight_text_with_delay(self, is_a: bool):
         def highlight_text():
+            success_color = ThemeManager.instance().get_color_css('success')
             if is_a:
-                self.a_signal_label.setStyleSheet('background-color: green')
+                self.a_signal_label.setStyleSheet(f'background-color: {success_color}')
                 self.b_signal_label.setStyleSheet('')
             else:
                 self.a_signal_label.setStyleSheet('')
-                self.b_signal_label.setStyleSheet('background-color: green')
+                self.b_signal_label.setStyleSheet(f'background-color: {success_color}')
 
         QTimer.singleShot(int(self.display_latency), highlight_text)

@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPen, QColor, QBrush
 from device.coyote.device import CoyoteDevice, CoyotePulse, CoyotePulses, CoyoteStrengths
 from qt_ui import settings
+from qt_ui.theme_manager import ThemeManager
 
 class CoyoteSettingsWidget(QtWidgets.QWidget):
     def __init__(self, parent=None):
@@ -422,8 +423,11 @@ class PulseGraph(QWidget):
         self.scene = QGraphicsScene()
         self.view.setScene(self.scene)
 
-        # Set background (light mode - original restim doesn't have dark mode)
-        self.view.setBackgroundBrush(QColor("#ffffff"))
+        # Set background based on current theme
+        self._update_background_brush()
+
+        # Connect to theme changes
+        ThemeManager.instance().theme_changed.connect(self._on_theme_changed)
 
         # Completely disable scrolling and user interaction
         self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -689,8 +693,19 @@ class PulseGraph(QWidget):
                             tick_x, tick_y,              # Start at top of rectangle
                             tick_x, tick_y + tick_height  # Go down
                         )
-                        tick.setPen(QPen(QColor("white"), 1))
+                        # Use a contrasting color for tick marks on colored pulses
+                        tick_color = QColor(255, 255, 255) if not ThemeManager.instance().is_dark_mode() else QColor(200, 200, 200)
+                        tick.setPen(QPen(tick_color, 1))
                         self.scene.addItem(tick)
+
+    def _update_background_brush(self):
+        """Update background brush based on current theme."""
+        self.view.setBackgroundBrush(ThemeManager.instance().get_color('background_graphics'))
+
+    def _on_theme_changed(self, is_dark: bool):
+        """Handle theme change."""
+        self._update_background_brush()
+        self.refresh()
 
     def cleanup(self):
         """Stop the timer to prevent errors on close"""

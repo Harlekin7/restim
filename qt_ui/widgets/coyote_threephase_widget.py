@@ -13,6 +13,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsEllipseItem, QGraphicsLineItem, QGraphicsTextItem
 from PySide6.QtGui import QColor, QPen, QFont, QPainter, QMouseEvent
 
+from qt_ui.theme_manager import ThemeManager
+
 
 class CoyoteThreePhaseWidget(QGraphicsView):
     """
@@ -33,7 +35,10 @@ class CoyoteThreePhaseWidget(QGraphicsView):
 
         self.scene = QGraphicsScene()
         self.setScene(self.scene)
-        self.setBackgroundBrush(Qt.white)
+        self._update_background_brush()
+
+        # Connect to theme changes
+        ThemeManager.instance().theme_changed.connect(self._on_theme_changed)
 
         self.setMouseTracking(True)
         self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
@@ -62,7 +67,7 @@ class CoyoteThreePhaseWidget(QGraphicsView):
 
     def _create_line(self):
         """Create the main horizontal line."""
-        pen = QPen(QColor(100, 100, 100))
+        pen = QPen(ThemeManager.instance().get_color('graphics_line'))
         pen.setWidth(2)
 
         # Main horizontal line from left to right
@@ -82,7 +87,7 @@ class CoyoteThreePhaseWidget(QGraphicsView):
 
     def _create_center_mark(self):
         """Create the center/neutral marker."""
-        pen = QPen(QColor(150, 150, 150))
+        pen = QPen(ThemeManager.instance().get_color('graphics_line_light'))
         pen.setWidth(2)
 
         # Center tick mark
@@ -99,7 +104,7 @@ class CoyoteThreePhaseWidget(QGraphicsView):
         # Channel A label (left side - dominant when alpha = -1)
         self.label_a = QGraphicsTextItem("A")
         self.label_a.setFont(font)
-        self.label_a.setDefaultTextColor(QColor(80, 80, 80))
+        self.label_a.setDefaultTextColor(ThemeManager.instance().get_color('text_secondary'))
         # Position below the left end
         self.label_a.setPos(-self._scale - 5, 15)
         self.scene.addItem(self.label_a)
@@ -107,7 +112,7 @@ class CoyoteThreePhaseWidget(QGraphicsView):
         # Channel B label (right side - dominant when alpha = +1)
         self.label_b = QGraphicsTextItem("B")
         self.label_b.setFont(font)
-        self.label_b.setDefaultTextColor(QColor(80, 80, 80))
+        self.label_b.setDefaultTextColor(ThemeManager.instance().get_color('text_secondary'))
         # Position below the right end
         self.label_b.setPos(self._scale - 8, 15)
         self.scene.addItem(self.label_b)
@@ -176,3 +181,31 @@ class CoyoteThreePhaseWidget(QGraphicsView):
         beta = 0.0
 
         self.mousePositionChanged.emit(alpha, beta)
+
+    def _update_background_brush(self):
+        """Update background brush based on current theme."""
+        self.setBackgroundBrush(ThemeManager.instance().get_color('background_graphics'))
+
+    def _on_theme_changed(self, is_dark: bool):
+        """Handle theme change by updating colors."""
+        self._update_background_brush()
+
+        # Update line colors
+        line_color = ThemeManager.instance().get_color('graphics_line')
+        line_pen = QPen(line_color)
+        line_pen.setWidth(2)
+        self.main_line.setPen(line_pen)
+        self.left_cap.setPen(line_pen)
+        self.right_cap.setPen(line_pen)
+
+        # Update center mark color
+        center_pen = QPen(ThemeManager.instance().get_color('graphics_line_light'))
+        center_pen.setWidth(2)
+        self.center_mark.setPen(center_pen)
+
+        # Update label colors
+        label_color = ThemeManager.instance().get_color('text_secondary')
+        self.label_a.setDefaultTextColor(label_color)
+        self.label_b.setDefaultTextColor(label_color)
+
+        self.update()

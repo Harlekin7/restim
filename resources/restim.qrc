@@ -2,7 +2,9 @@
   <qresource prefix="restim">
     <file>activity-1_poly.svg</file>
     <file>phase diagram foc.svg</file>
+    <file>phase diagram foc dark.svg</file>
     <file>phase diagram stereostim.svg</file>
+    <file>phase diagram stereostim dark.svg</file>
     <file>favicon.png</file>
     <file>wizard/continuous.svg</file>
     <file>wizard/pulse_based.svg</file>

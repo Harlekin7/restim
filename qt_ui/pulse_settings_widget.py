@@ -17,6 +17,7 @@ from stim_math.axis import create_constant_axis
 
 from qt_ui import settings
 from qt_ui.axis_controller import AxisController, PercentAxisController
+from qt_ui.theme_manager import ThemeManager
 
 
 
@@ -36,6 +37,38 @@ class MyMplCanvas(FigureCanvas):
                                    QtWidgets.QSizePolicy.Expanding,
                                    QtWidgets.QSizePolicy.Expanding)
         FigureCanvas.updateGeometry(self)
+
+        # Apply theme colors
+        self._apply_theme_colors()
+
+        # Connect to theme changes
+        ThemeManager.instance().theme_changed.connect(self._on_theme_changed)
+
+    def _apply_theme_colors(self):
+        """Apply theme colors to the matplotlib figure."""
+        is_dark = ThemeManager.instance().is_dark_mode()
+        if is_dark:
+            bg_color = '#2d2d2d'
+            text_color = '#ffffff'
+            grid_color = '#555555'
+        else:
+            bg_color = '#ffffff'
+            text_color = '#000000'
+            grid_color = '#cccccc'
+
+        self.figure.set_facecolor(bg_color)
+        self.axes.set_facecolor(bg_color)
+        self.axes.tick_params(colors=text_color, which='both')
+        self.axes.xaxis.label.set_color(text_color)
+        self.axes.yaxis.label.set_color(text_color)
+        self.axes.title.set_color(text_color)
+        for spine in self.axes.spines.values():
+            spine.set_color(text_color)
+
+    def _on_theme_changed(self, is_dark: bool):
+        """Handle theme change."""
+        self._apply_theme_colors()
+        self.draw()
 
     def compute_initial_figure(self):
         pass
@@ -74,7 +107,13 @@ class MyStaticMplCanvas(MyMplCanvas):
         self.axes.set_title("Pulse shape")
         self.axes.set_xlim((0, x_limit))
         self.axes.set_ylim((-1.1, 1.1))
-        self.axes.plot(x, y)
+
+        # Use theme-appropriate line color
+        line_color = '#64a0ff' if ThemeManager.instance().is_dark_mode() else '#1f77b4'
+        self.axes.plot(x, y, color=line_color)
+
+        # Reapply theme colors after clearing axes
+        self._apply_theme_colors()
         self.draw()
 
 
@@ -194,7 +233,8 @@ class PulseSettingsWidget(QtWidgets.QWidget):
             self.details_info.setStyleSheet('')
             self.details_info.setText(f'{duty_cycle:.0%}')
         else:
-            self.details_info.setStyleSheet('color: red')
+            error_color = ThemeManager.instance().get_color_css('error')
+            self.details_info.setStyleSheet(f'color: {error_color}')
             self.details_info.setText(f'{1:.0%}')
 
         self.mpl_canvas.updateParams(carrier_freq, pulse_freq, pulse_width, self.pulse_interval_random.value() / 100, rise_time)

@@ -7,6 +7,8 @@ from PySide6.QtGui import QColor, QTransform, QPen, Qt, QPainter, QFont, QMouseE
 
 import numpy as np
 
+from qt_ui.theme_manager import ThemeManager
+
 COEF_1 = 1
 COEF_2 = np.sqrt(8) / 3           # sqrt(1 - coef_1**2/3)
 COEF_3 = np.sqrt(2) / np.sqrt(3)  # sqrt(1 - coef_1**2/3 - coef_2**2/2)
@@ -17,10 +19,14 @@ v2 = np.array([-COEF_1 / 3, COEF_2, 0])
 v3 = np.array([-COEF_1 / 3, -COEF_2 / 2, COEF_3])
 v4 = np.array([-COEF_1 / 3, -COEF_2 / 2, -COEF_3])
 
-COLOR_LINE = QColor.fromRgb(50, 50, 50)
 LINE_WIDTH = .08
 COLOR_DOT = QColor.fromRgb(180, 140, 220)
 DOT_WIDTH = .15
+
+
+def get_line_color():
+    """Get the line color based on current theme."""
+    return ThemeManager.instance().get_color('graphics_line')
 
 ## SSBU colors.
 COLOR_A = QColor.fromRgb(0xFE, 0x2E, 0x2E)   # red
@@ -151,7 +157,7 @@ class FourphaseWidgetStereographic(QGraphicsView):
                 poly_left.append(dir * i + lineDir * scale)
                 poly_right.append(dir * i - lineDir * scale)
             poly = poly_left + poly_right[::-1]
-            self.scene().addPolygon(poly, Qt.PenStyle.NoPen, COLOR_LINE)
+            self.scene().addPolygon(poly, Qt.PenStyle.NoPen, get_line_color())
 
         add_straight_line(QPointF(1, 0))
         add_straight_line(QPointF(0, 1))
@@ -163,7 +169,7 @@ class FourphaseWidgetStereographic(QGraphicsView):
         xy = (r, 0)
         pen = QPen()
         pen.setWidthF(LINE_WIDTH * projection.scale(xy))
-        pen.setColor(COLOR_LINE)
+        pen.setColor(get_line_color())
         self.scene().addEllipse(
             QRectF(-r, -r, 2 * r, 2 * r),
             pen
@@ -193,7 +199,7 @@ class FourphaseWidgetStereographic(QGraphicsView):
     def setup_cursor(self):
         pen = QPen()
         pen.setWidthF(LINE_WIDTH * .2)
-        pen.setColor(QColor.fromRgb(255, 255, 255))
+        pen.setColor(ThemeManager.instance().get_color('cursor_border'))
         self.cursor_1 = QGraphicsEllipseItem(0, 0, DOT_WIDTH, DOT_WIDTH)
         self.cursor_1.setPen(pen)
         self.cursor_1.setBrush(COLOR_DOT)

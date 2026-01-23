@@ -39,6 +39,8 @@ from device.coyote.constants import DEVICE_NAME
 from qt_ui.widgets.icon_with_connection_status import IconWithConnectionStatus
 from qt_ui.coyote_settings_widget import CoyoteSettingsWidget
 from qt_ui.widgets.coyote_status_widget import CoyoteStatusWidget
+from qt_ui.widgets.dark_mode_toggle import DarkModeToggle
+from qt_ui.theme_manager import ThemeManager
 from stim_math.axis import create_temporal_axis
 
 
@@ -73,6 +75,13 @@ class Window(QMainWindow, Ui_MainWindow):
         icon = QtGui.QIcon()
         icon.addPixmap(QtGui.QPixmap(resources.favicon), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.setWindowIcon(icon)
+
+        # Dark mode toggle in menu bar corner
+        self.dark_mode_toggle = DarkModeToggle()
+        self.dark_mode_toggle.setChecked(ThemeManager.instance().is_dark_mode())
+        self.menuBar.setCornerWidget(self.dark_mode_toggle, Qt.TopRightCorner)
+        self.dark_mode_toggle.toggled.connect(ThemeManager.instance().set_dark_mode)
+        ThemeManager.instance().theme_changed.connect(self.dark_mode_toggle.set_checked)
 
         # TODO: credit https://glyphs.fyi/ for icons
         spacer = QWidget()
@@ -772,6 +781,10 @@ def run():
     sys.excepthook = excepthook
 
     app = QApplication(sys.argv)
+
+    # Initialize theme before creating any widgets
+    ThemeManager.instance().apply_theme(app)
+
     win = Window()
     win.show()
 
