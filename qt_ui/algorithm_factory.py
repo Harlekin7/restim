@@ -472,10 +472,12 @@ class AlgorithmFactory:
         return algorithm
 
     def get_axis_coyote_channel_a_pulse_frequency(self):
-        return self.mainwindow.tab_coyote.channel_a.axis_pulse_frequency
+        # Per-channel pulse_frequency UI was removed - use main pulse_frequency from Pulse Settings tab
+        return self.get_axis_pulse_frequency()
 
     def get_axis_coyote_channel_b_pulse_frequency(self):
-        return self.mainwindow.tab_coyote.channel_b.axis_pulse_frequency
+        # Per-channel pulse_frequency UI was removed - use main pulse_frequency from Pulse Settings tab
+        return self.get_axis_pulse_frequency()
 
     def get_axis_from_script_mapping(self, axis: AxisEnum) -> AbstractAxis | None:
         if not self.load_funscripts:

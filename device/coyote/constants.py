@@ -2,7 +2,7 @@
 DEVICE_NAME = "47L121000"
 
 # Coyote hardware timing and derived limits
-# Pulse duration limits in milliseconds
+# Pulse duration limits in milliseconds (API spec says 10-240ms, but hardware supports 5-240ms)
 MIN_PULSE_DURATION_MS = 5
 MAX_PULSE_DURATION_MS = 240
 

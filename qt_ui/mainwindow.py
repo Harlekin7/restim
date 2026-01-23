@@ -369,19 +369,6 @@ class Window(QMainWindow, Ui_MainWindow):
         self.tab_vibrate.vib2_high_low_bias_controller.link_axis(algorithm_factory.get_axis_vib2_high_low_bias())
         self.tab_vibrate.vib2_random_controller.link_axis(algorithm_factory.get_axis_vib2_random())
 
-        # coyote tab - disable pulse_frequency spinboxes if funscript is controlling them
-        has_pulse_frequency_funscript = algorithm_factory.get_axis_from_script_mapping(AxisEnum.PULSE_FREQUENCY) is not None
-        self.tab_coyote.set_pulse_frequency_from_funscript(has_pulse_frequency_funscript)
-        
-        # Link per-channel pulse_frequency controllers
-        coyote_ch_a_freq_controller = self.tab_coyote.get_channel_a_pulse_frequency_controller()
-        if coyote_ch_a_freq_controller:
-            coyote_ch_a_freq_controller.link_axis(algorithm_factory.get_axis_coyote_channel_a_pulse_frequency())
-        
-        coyote_ch_b_freq_controller = self.tab_coyote.get_channel_b_pulse_frequency_controller()
-        if coyote_ch_b_freq_controller:
-            coyote_ch_b_freq_controller.link_axis(algorithm_factory.get_axis_coyote_channel_b_pulse_frequency())
-
         # neostim tab
         # TODO
 
@@ -430,10 +417,10 @@ class Window(QMainWindow, Ui_MainWindow):
             visible |= {self.tab_neostim}
             visible -= {self.tab_vibrate, self.tab_details}
         if config.device_type == DeviceType.COYOTE_THREE_PHASE:
-            visible |= {self.tab_coyote, self.tab_threephase}
+            visible |= {self.tab_coyote, self.tab_threephase, self.tab_pulse_settings}
             visible -= {self.tab_vibrate}
         if config.device_type == DeviceType.COYOTE_TWO_CHANNEL:
-            visible |= {self.tab_coyote, self.tab_threephase}
+            visible |= {self.tab_coyote, self.tab_threephase, self.tab_pulse_settings}
             visible -= {self.tab_vibrate}
 
         # Show/hide Coyote status widget based on device type
@@ -623,19 +610,19 @@ class Window(QMainWindow, Ui_MainWindow):
         elif device.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
             # Create Coyote device if it doesn't exist
             if not self.output_device or not isinstance(self.output_device, CoyoteDevice):
-                device_name = device.settings.coyote_device_name.get()
+                device_name = qt_ui.settings.coyote_device_name.get()
                 if not device_name:
                     logger.warning("Coyote device name not configured")
                     return
                 self.output_device = CoyoteDevice(device_name)
                 # Set parameters from settings
                 self.output_device.parameters = CoyoteParams(
-                    channel_a_limit=device.settings.coyote_channel_a_limit.get(),
-                    channel_b_limit=device.settings.coyote_channel_b_limit.get(),
-                    channel_a_freq_balance=device.settings.coyote_channel_a_freq_balance.get(),
-                    channel_b_freq_balance=device.settings.coyote_channel_b_freq_balance.get(),
-                    channel_a_intensity_balance=device.settings.coyote_channel_a_intensity_balance.get(),
-                    channel_b_intensity_balance=device.settings.coyote_channel_b_intensity_balance.get(),
+                    channel_a_limit=qt_ui.settings.coyote_channel_a_limit.get(),
+                    channel_b_limit=qt_ui.settings.coyote_channel_b_limit.get(),
+                    channel_a_freq_balance=qt_ui.settings.coyote_channel_a_freq_balance.get(),
+                    channel_b_freq_balance=qt_ui.settings.coyote_channel_b_freq_balance.get(),
+                    channel_a_intensity_balance=qt_ui.settings.coyote_channel_a_intensity_balance.get(),
+                    channel_b_intensity_balance=qt_ui.settings.coyote_channel_b_intensity_balance.get(),
                 )
                 # Connect to settings widget and status widget
                 if hasattr(self, 'tab_coyote') and self.tab_coyote:

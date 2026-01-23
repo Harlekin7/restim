@@ -1,18 +1,15 @@
-import asyncio
 import logging
 import time
 from dataclasses import dataclass
 from typing import Dict, Optional
-from PySide6 import QtWidgets, QtCore
+from PySide6 import QtWidgets
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QSlider, QHBoxLayout,
                             QGraphicsView, QGraphicsScene, QGraphicsLineItem, QSpinBox,
                             QGraphicsRectItem, QToolTip, QGraphicsEllipseItem)
-from PySide6.QtCore import QSettings, Qt, QTimer
-from PySide6.QtGui import QPen, QColor, QBrush, QPainterPath
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QPen, QColor, QBrush
 from device.coyote.device import CoyoteDevice, CoyotePulse, CoyotePulses, CoyoteStrengths
 from qt_ui import settings
-from qt_ui.axis_controller import AxisController
-from stim_math.axis import create_constant_axis
 
 class CoyoteSettingsWidget(QtWidgets.QWidget):
     def __init__(self, parent=None):
@@ -106,11 +103,6 @@ class CoyoteSettingsWidget(QtWidgets.QWidget):
         new_level = logging.DEBUG if enabled else logging.INFO
         self.coyote_logger.setLevel(new_level)
 
-    def set_pulse_frequency_from_funscript(self, enabled: bool):
-        """Enable/disable pulse_frequency spinboxes based on funscript availability"""
-        for control in self.channel_controls.values():
-            control.set_pulse_frequency_enabled(not enabled)
-
     def cleanup(self):
         """Clean up widget resources when switching away from Coyote device"""
         if self.device:
@@ -122,19 +114,6 @@ class CoyoteSettingsWidget(QtWidgets.QWidget):
 
         for control in self.channel_controls.values():
             control.cleanup()
-
-    def get_pulse_frequency_controller(self, channel_id: str) -> Optional[AxisController]:
-        """Get the pulse_frequency axis controller for a specific channel"""
-        control = self.channel_controls.get(channel_id.upper())
-        return control.pulse_frequency_controller if control else None
-
-    def get_channel_a_pulse_frequency_controller(self) -> Optional[AxisController]:
-        """Get the pulse_frequency axis controller for channel A"""
-        return self.get_pulse_frequency_controller('A')
-
-    def get_channel_b_pulse_frequency_controller(self) -> Optional[AxisController]:
-        """Get the pulse_frequency axis controller for channel B"""
-        return self.get_pulse_frequency_controller('B')
 
 @dataclass(frozen=True)
 class ChannelConfig:
@@ -150,8 +129,6 @@ class ChannelControl:
 
         self.freq_min: Optional[QSpinBox] = None
         self.freq_max: Optional[QSpinBox] = None
-        self.pulse_frequency: Optional[QSpinBox] = None
-        self.pulse_frequency_controller: Optional[AxisController] = None
         self.strength_max: Optional[QSpinBox] = None
         self.volume_slider: Optional[QSlider] = None
         self.volume_label: Optional[QLabel] = None
@@ -165,11 +142,6 @@ class ChannelControl:
     @property
     def _is_channel_a(self) -> bool:
         return self.channel_id.upper() == 'A'
-
-    @property
-    def axis_pulse_frequency(self):
-        """Return the pulse frequency axis for this channel."""
-        return self._pulse_frequency_axis if hasattr(self, '_pulse_frequency_axis') else None
 
     def build_ui(self) -> QHBoxLayout:
         layout = QHBoxLayout()
@@ -206,64 +178,6 @@ class ChannelControl:
         self.strength_max.valueChanged.connect(self.on_strength_max_changed)
         strength_layout.addWidget(self.strength_max)
         left.addLayout(strength_layout)
-
-        pulse_freq_layout = QHBoxLayout()
-        self.pulse_frequency = QSpinBox()
-        self.pulse_frequency.setRange(0, 200)
-        self.pulse_frequency.setSingleStep(1)
-        self.pulse_frequency.setValue(50)
-        pulse_freq_layout.addWidget(QLabel("Pulse Freq (Hz)"))
-        pulse_freq_layout.addWidget(self.pulse_frequency)
-        left.addLayout(pulse_freq_layout)
-        
-        # Create constant axis for this channel's pulse_frequency - no interpolation, direct value updates
-        self._pulse_frequency_axis = create_constant_axis(self.pulse_frequency.value())
-        # Connect spinbox changes directly to update axis value (no AxisController, no interpolation)
-        self.pulse_frequency.valueChanged.connect(self._update_pulse_frequency_axis)
-        
-        # Create a simple wrapper that mimics AxisController for spinbox sync with funscript
-        class SimpleAxisWrapper(QtCore.QObject):
-            def __init__(self, spinbox, axis):
-                super().__init__()
-                self.axis = axis
-                self.spinbox = spinbox
-                self.script_axis = None
-                self.internal_axis = axis
-                
-                # Timer to sync spinbox with script_axis (like AxisController does)
-                self.timer = QTimer()
-                self.timer.setInterval(16)  # ~60Hz update rate
-                self.timer.timeout.connect(self.timeout)
-            
-            def timeout(self):
-                """Update spinbox from script_axis value"""
-                if self.script_axis:
-                    import time
-                    current_value = int(self.script_axis.interpolate(time.time()))
-                    if self.spinbox.value() != current_value:
-                        self.spinbox.blockSignals(True)
-                        self.spinbox.setValue(current_value)
-                        self.spinbox.blockSignals(False)
-            
-            def link_axis(self, new_axis):
-                """Link to a new axis (e.g., from funscript during media sync)"""
-                from stim_math.axis import WriteProtectedAxis
-                if isinstance(new_axis, WriteProtectedAxis):
-                    # Funscript axis - enable auto-update
-                    self.script_axis = new_axis
-                    self.spinbox.setEnabled(False)
-                    if self.timer is not None:
-                        self.timer.start()
-                else:
-                    # Internal axis - disable auto-update
-                    self.script_axis = None
-                    self.spinbox.setEnabled(True)
-                    if self.timer is not None:
-                        self.timer.stop()
-                    self.internal_axis = new_axis
-                self.axis = new_axis
-        
-        self.pulse_frequency_controller = SimpleAxisWrapper(self.pulse_frequency, self._pulse_frequency_axis)
 
         layout.addLayout(left)
 
@@ -332,23 +246,13 @@ class ChannelControl:
         self.volume_slider.setValue(value)
         self.volume_slider.blockSignals(False)
 
-    def set_pulse_frequency_enabled(self, enabled: bool):
-        """Enable or disable the pulse frequency spinbox"""
-        if self.pulse_frequency:
-            self.pulse_frequency.setEnabled(enabled)
-
     def cleanup(self):
         """Clean up resources when switching devices"""
-        if self.pulse_frequency_controller and hasattr(self.pulse_frequency_controller, 'timer'):
-            self.pulse_frequency_controller.timer.stop()
-            self.pulse_frequency_controller.timer.deleteLater()
-        if self.pulse_graph:
-            self.pulse_graph.cleanup()
-
-    def _update_pulse_frequency_axis(self, value: int):
-        """Update pulse frequency axis directly when spinbox value changes (no interpolation)"""
-        if self._pulse_frequency_axis:
-            self._pulse_frequency_axis.value = value
+        try:
+            if self.pulse_graph:
+                self.pulse_graph.cleanup()
+        except RuntimeError:
+            pass  # Qt object already deleted during app shutdown
 
     def on_strength_max_changed(self, value: int):
         self.config.strength_max_setting.set(value)
