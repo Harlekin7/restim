@@ -399,8 +399,192 @@ class ThemeManager(QObject):
         """
 
     def _get_light_stylesheet(self) -> str:
-        """Get the light mode stylesheet (minimal - mostly use defaults)."""
-        return ""
+        """Get the light mode stylesheet (matches dark mode structure with light colors)."""
+        colors = self._colors['light']
+        bg_primary = colors['background_primary'].name()
+        bg_secondary = colors['background_secondary'].name()
+        text_primary = colors['text_primary'].name()
+        text_secondary = colors['text_secondary'].name()
+        border = colors['border'].name()
+
+        return f"""
+            QWidget {{
+                background-color: {bg_secondary};
+                color: {text_primary};
+            }}
+            QMainWindow {{
+                background-color: {bg_secondary};
+            }}
+            QDialog {{
+                background-color: {bg_secondary};
+            }}
+            QGroupBox {{
+                background-color: {bg_secondary};
+                border: 1px solid {border};
+                border-radius: 4px;
+                margin-top: 8px;
+                padding-top: 8px;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 4px;
+                color: {text_primary};
+            }}
+            QTabWidget::pane {{
+                background-color: {bg_secondary};
+                border: 1px solid {border};
+            }}
+            QTabBar::tab {{
+                background-color: {bg_primary};
+                color: {text_primary};
+                padding: 8px 16px;
+                border: 1px solid {border};
+                border-bottom: none;
+            }}
+            QTabBar::tab:selected {{
+                background-color: {bg_secondary};
+            }}
+            QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
+                background-color: {bg_primary};
+                color: {text_primary};
+                border: 1px solid {border};
+                padding: 4px;
+            }}
+            QComboBox::drop-down {{
+                border: none;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {bg_primary};
+                color: {text_primary};
+                selection-background-color: #2a82da;
+            }}
+            QListWidget, QTreeWidget, QTableWidget, QTableView, QListView, QTreeView {{
+                background-color: {bg_primary};
+                color: {text_primary};
+                border: 1px solid {border};
+            }}
+            QHeaderView::section {{
+                background-color: {bg_secondary};
+                color: {text_primary};
+                padding: 4px;
+                border: 1px solid {border};
+            }}
+            QPushButton {{
+                background-color: {bg_primary};
+                color: {text_primary};
+                border: 1px solid {border};
+                padding: 6px 12px;
+                border-radius: 3px;
+            }}
+            QPushButton:hover {{
+                background-color: #e0e0e0;
+            }}
+            QPushButton:pressed {{
+                background-color: #d0d0d0;
+            }}
+            QSlider::groove:horizontal {{
+                background-color: {bg_primary};
+                height: 6px;
+                border-radius: 3px;
+            }}
+            QSlider::handle:horizontal {{
+                background-color: #2a82da;
+                width: 16px;
+                margin: -5px 0;
+                border-radius: 8px;
+            }}
+            QProgressBar {{
+                background-color: {bg_primary};
+                border: 1px solid {border};
+                border-radius: 3px;
+                text-align: center;
+                color: {text_primary};
+            }}
+            QProgressBar::chunk {{
+                background-color: #2a82da;
+            }}
+            QScrollBar:vertical {{
+                background-color: {bg_primary};
+                width: 12px;
+                border: none;
+            }}
+            QScrollBar::handle:vertical {{
+                background-color: {border};
+                min-height: 20px;
+                border-radius: 6px;
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
+            QScrollBar:horizontal {{
+                background-color: {bg_primary};
+                height: 12px;
+                border: none;
+            }}
+            QScrollBar::handle:horizontal {{
+                background-color: {border};
+                min-width: 20px;
+                border-radius: 6px;
+            }}
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+                width: 0px;
+            }}
+            QMenuBar {{
+                background-color: {bg_secondary};
+                color: {text_primary};
+            }}
+            QMenuBar::item {{
+                background-color: transparent;
+                padding: 4px 8px;
+            }}
+            QMenuBar::item:selected {{
+                background-color: #e0e0e0;
+            }}
+            QMenu {{
+                background-color: {bg_primary};
+                color: {text_primary};
+                border: 1px solid {border};
+            }}
+            QMenu::item:selected {{
+                background-color: #2a82da;
+            }}
+            QToolBar {{
+                background-color: {bg_secondary};
+                border: none;
+                spacing: 3px;
+            }}
+            QToolButton {{
+                background-color: transparent;
+                color: {text_primary};
+                padding: 4px;
+            }}
+            QToolButton:hover {{
+                background-color: #e0e0e0;
+            }}
+            QToolButton:checked {{
+                background-color: #d0d0d0;
+            }}
+            QLabel {{
+                background-color: transparent;
+                color: {text_primary};
+            }}
+            QCheckBox {{
+                color: {text_primary};
+            }}
+            QRadioButton {{
+                color: {text_primary};
+            }}
+            QStatusBar {{
+                background-color: {bg_secondary};
+                color: {text_primary};
+            }}
+            QToolTip {{
+                background-color: {bg_primary};
+                color: {text_primary};
+                border: 1px solid {border};
+            }}
+        """
 
     def _apply_palette(self):
         """Apply the current theme's palette and stylesheet to the application."""
