@@ -3,11 +3,11 @@ import sys
 from enum import Enum
 
 from PySide6 import QtGui
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QTimer, Qt, QEvent
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QSizePolicy, QFrame, QStyleFactory, QMessageBox,
-    QVBoxLayout
+    QVBoxLayout, QHBoxLayout
 )
 import logging
 
@@ -44,6 +44,7 @@ from qt_ui.widgets.media_sync_offset_widget import MediaSyncOffsetWidget
 from qt_ui.widgets.coyote_motion_settings_widget import CoyoteMotionSettingsWidget
 from qt_ui.widgets.coyote_motion_visualization_widget import CoyoteMotionVisualizationWidget
 from qt_ui.widgets.dark_mode_toggle import DarkModeToggle
+from qt_ui.widgets.custom_title_bar import CustomTitleBar
 from qt_ui.theme_manager import ThemeManager
 from stim_math.axis import create_temporal_axis
 
@@ -67,7 +68,14 @@ class PlayState(Enum):
 class Window(QMainWindow, Ui_MainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
+
+        # Make window frameless for custom title bar
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
+
         self.setupUi(self)
+
+        # Create custom title bar
+        self._setup_custom_title_bar()
 
         self.playstate = PlayState.STOPPED
         self.tab_volume.set_play_state(self.playstate)
@@ -79,11 +87,12 @@ class Window(QMainWindow, Ui_MainWindow):
         icon = QtGui.QIcon()
         icon.addPixmap(QtGui.QPixmap(resources.favicon), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.setWindowIcon(icon)
+        self.custom_title_bar.set_icon(icon)
 
         # Dark mode toggle in menu bar corner
         self.dark_mode_toggle = DarkModeToggle()
         self.dark_mode_toggle.setChecked(ThemeManager.instance().is_dark_mode())
-        self.menuBar.setCornerWidget(self.dark_mode_toggle, Qt.TopRightCorner)
+        self._menubar.setCornerWidget(self.dark_mode_toggle, Qt.TopRightCorner)
         self.dark_mode_toggle.toggled.connect(ThemeManager.instance().set_dark_mode)
         ThemeManager.instance().theme_changed.connect(self.dark_mode_toggle.set_checked)
 
@@ -655,6 +664,276 @@ class Window(QMainWindow, Ui_MainWindow):
         if self.playstate == PlayState.WAITING_ON_LOAD:
             logger.info("autostart timeout reached. No longer starting audio on file load")
             self.signal_stop(PlayState.STOPPED)
+
+    def _setup_custom_title_bar(self):
+        """Set up the custom title bar for frameless window."""
+        # Get the current central widget, menu bar, and toolbar
+        original_central = self.centralWidget()
+        # menuBar is an attribute set by setupUi, not the QMainWindow method
+        original_menubar = self.menuBar
+        # toolBar is also an attribute set by setupUi (the left sidebar toolbar)
+        original_toolbar = self.toolBar
+
+        # Create a new container widget for everything
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        self._resize_margin = 4  # Resize detection margin
+        container_layout.setContentsMargins(0, 0, 0, 8)
+        container_layout.setSpacing(0)
+
+        # Add a subtle border to the container for a consistent visual edge
+        self._apply_window_border(container)
+
+        # Create and add custom title bar at the very top
+        self.custom_title_bar = CustomTitleBar(self)
+        self.custom_title_bar.set_title("restim")
+        container_layout.addWidget(self.custom_title_bar)
+
+        # Move the menu bar into our container (below title bar)
+        container_layout.addWidget(original_menubar)
+        original_menubar.setVisible(True)
+        original_menubar.setNativeMenuBar(False)
+        self._menubar = original_menubar
+
+        # Create horizontal layout for toolbar + central widget
+        content_layout = QHBoxLayout()
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+
+        # Remove toolbar from QMainWindow and add to our layout
+        self.removeToolBar(original_toolbar)
+        original_toolbar.setOrientation(Qt.Vertical)
+        content_layout.addWidget(original_toolbar)
+        original_toolbar.setVisible(True)
+
+        # Add original central widget
+        content_layout.addWidget(original_central)
+
+        container_layout.addLayout(content_layout)
+
+        # Set the container as the new central widget
+        self.setCentralWidget(container)
+
+        # Connect title bar signals
+        self.custom_title_bar.minimize_clicked.connect(self.showMinimized)
+        self.custom_title_bar.maximize_clicked.connect(self._toggle_maximize)
+        self.custom_title_bar.close_clicked.connect(self.close)
+
+        # Enable mouse tracking for resize cursors
+        self.setMouseTracking(True)
+        container.setMouseTracking(True)
+        self._resizing = False
+        self._resize_edge = None
+        self._resize_cursor_set = False  # Track if we've set an override cursor
+        self._container = container  # Keep reference for mouse events
+
+        # Install event filter on application to catch all mouse events for resizing
+        QApplication.instance().installEventFilter(self)
+
+    def _apply_window_border(self, container):
+        """Apply a consistent border around the window."""
+        # Enable styled background so stylesheet borders work on QWidget
+        container.setAttribute(Qt.WA_StyledBackground, True)
+        container.setObjectName("windowContainer")
+        is_dark = ThemeManager.instance().is_dark_mode()
+        border_color = "#555555" if is_dark else "#a0a0a0"
+        container.setStyleSheet(f"QWidget#windowContainer {{ border: 1px solid {border_color}; }}")
+
+        # Connect to theme changes
+        ThemeManager.instance().theme_changed.connect(lambda dark: self._update_window_border(dark))
+
+    def _update_window_border(self, is_dark):
+        """Update the window border color when theme changes."""
+        border_color = "#555555" if is_dark else "#a0a0a0"
+        self._container.setStyleSheet(f"QWidget#windowContainer {{ border: 1px solid {border_color}; }}")
+
+    def _toggle_maximize(self):
+        """Toggle between maximized and normal window state."""
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
+    def mousePressEvent(self, event):
+        """Handle mouse press for window resizing."""
+        if not hasattr(self, '_resize_margin'):
+            super().mousePressEvent(event)
+            return
+
+        if event.button() == Qt.LeftButton:
+            edge = self._get_resize_edge(event.position().toPoint())
+            if edge:
+                self._resizing = True
+                self._resize_edge = edge
+                self._resize_start_pos = event.globalPosition().toPoint()
+                self._resize_start_geometry = self.geometry()
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        """Handle mouse move for resize cursor and resizing."""
+        if not hasattr(self, '_resize_margin'):
+            super().mouseMoveEvent(event)
+            return
+
+        if self._resizing:
+            self._do_resize(event.globalPosition().toPoint())
+            event.accept()
+            return
+
+        # Update cursor based on position
+        edge = self._get_resize_edge(event.position().toPoint())
+        if edge in ('left', 'right'):
+            self.setCursor(Qt.SizeHorCursor)
+        elif edge in ('top', 'bottom'):
+            self.setCursor(Qt.SizeVerCursor)
+        elif edge in ('top-left', 'bottom-right'):
+            self.setCursor(Qt.SizeFDiagCursor)
+        elif edge in ('top-right', 'bottom-left'):
+            self.setCursor(Qt.SizeBDiagCursor)
+        else:
+            self.setCursor(Qt.ArrowCursor)
+
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release to stop resizing."""
+        if hasattr(self, '_resizing'):
+            self._resizing = False
+            self._resize_edge = None
+        super().mouseReleaseEvent(event)
+
+    def _get_resize_edge(self, pos):
+        """Determine which edge the mouse is near for resizing."""
+        if self.isMaximized():
+            return None
+
+        if not hasattr(self, '_resize_margin'):
+            return None
+
+        margin = self._resize_margin
+        rect = self.rect()
+
+        left = pos.x() < margin
+        right = pos.x() > rect.width() - margin
+        top = pos.y() < margin
+        bottom = pos.y() > rect.height() - margin
+
+        if top and left:
+            return 'top-left'
+        elif top and right:
+            return 'top-right'
+        elif bottom and left:
+            return 'bottom-left'
+        elif bottom and right:
+            return 'bottom-right'
+        elif left:
+            return 'left'
+        elif right:
+            return 'right'
+        elif top:
+            return 'top'
+        elif bottom:
+            return 'bottom'
+        return None
+
+    def _do_resize(self, global_pos):
+        """Perform window resize based on mouse movement."""
+        diff = global_pos - self._resize_start_pos
+        geo = self._resize_start_geometry
+
+        new_geo = self.geometry()
+        min_width = 400
+        min_height = 300
+
+        if 'left' in self._resize_edge:
+            new_width = geo.width() - diff.x()
+            if new_width >= min_width:
+                new_geo.setLeft(geo.left() + diff.x())
+        if 'right' in self._resize_edge:
+            new_width = geo.width() + diff.x()
+            if new_width >= min_width:
+                new_geo.setWidth(new_width)
+        if 'top' in self._resize_edge:
+            new_height = geo.height() - diff.y()
+            if new_height >= min_height:
+                new_geo.setTop(geo.top() + diff.y())
+        if 'bottom' in self._resize_edge:
+            new_height = geo.height() + diff.y()
+            if new_height >= min_height:
+                new_geo.setHeight(new_height)
+
+        self.setGeometry(new_geo)
+
+    def eventFilter(self, obj, event):
+        """Event filter to handle resize at window edges."""
+        if not hasattr(self, '_resize_margin'):
+            return super().eventFilter(obj, event)
+
+        from PySide6.QtGui import QMouseEvent
+
+        # Only handle mouse events
+        if not isinstance(event, QMouseEvent):
+            return super().eventFilter(obj, event)
+
+        # Get position relative to this window
+        global_pos = event.globalPosition().toPoint()
+        local_pos = self.mapFromGlobal(global_pos)
+
+        # Check if mouse is within our window bounds
+        if not self.rect().contains(local_pos) and not self._resizing:
+            return super().eventFilter(obj, event)
+
+        if event.type() == QEvent.MouseMove:
+            if self._resizing:
+                self._do_resize(global_pos)
+                return True
+
+            # Update cursor based on edge
+            edge = self._get_resize_edge(local_pos)
+            if edge:
+                # Set appropriate resize cursor
+                if edge in ('left', 'right'):
+                    cursor = Qt.SizeHorCursor
+                elif edge in ('top', 'bottom'):
+                    cursor = Qt.SizeVerCursor
+                elif edge in ('top-left', 'bottom-right'):
+                    cursor = Qt.SizeFDiagCursor
+                else:  # top-right, bottom-left
+                    cursor = Qt.SizeBDiagCursor
+
+                if not self._resize_cursor_set:
+                    QApplication.setOverrideCursor(cursor)
+                    self._resize_cursor_set = True
+                else:
+                    QApplication.changeOverrideCursor(cursor)
+            else:
+                # Restore cursor when not on edge
+                if self._resize_cursor_set:
+                    QApplication.restoreOverrideCursor()
+                    self._resize_cursor_set = False
+
+        elif event.type() == QEvent.MouseButtonPress:
+            if event.button() == Qt.LeftButton:
+                edge = self._get_resize_edge(local_pos)
+                if edge:
+                    self._resizing = True
+                    self._resize_edge = edge
+                    self._resize_start_pos = global_pos
+                    self._resize_start_geometry = self.geometry()
+                    return True
+
+        elif event.type() == QEvent.MouseButtonRelease:
+            if self._resizing:
+                self._resizing = False
+                self._resize_edge = None
+                if self._resize_cursor_set:
+                    QApplication.restoreOverrideCursor()
+                    self._resize_cursor_set = False
+                return True
+
+        return super().eventFilter(obj, event)
 
     def refresh_play_button_icon(self):
         if self.playstate in (PlayState.PLAYING, PlayState.WAITING_ON_LOAD):
