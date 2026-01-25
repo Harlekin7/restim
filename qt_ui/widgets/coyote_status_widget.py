@@ -6,13 +6,12 @@ Only visible when in Coyote device mode.
 """
 
 from typing import Optional
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGroupBox, QSizePolicy, QSpinBox
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGroupBox, QSizePolicy
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontMetrics
 
 from device.coyote.device import CoyoteDevice
 from device.coyote.types import ConnectionStage
-from qt_ui import settings
 
 
 class ElidedLabel(QLabel):
@@ -89,30 +88,6 @@ class CoyoteStatusWidget(QGroupBox):
         self.button_reset.clicked.connect(self._on_reset_clicked)
         layout.addWidget(self.button_reset)
 
-        # Media sync offset for Bluetooth latency compensation
-        offset_layout = QHBoxLayout()
-        offset_layout.setSpacing(4)
-        offset_label = QLabel("Sync Offset:")
-        offset_label.setToolTip(
-            "Compensate for Bluetooth latency when syncing with media players.\n"
-            "Positive values delay the signal, negative values advance it.\n"
-            "Typical range: -500ms to +500ms"
-        )
-        self.offset_spinbox = QSpinBox()
-        self.offset_spinbox.setRange(-2000, 2000)
-        self.offset_spinbox.setSingleStep(10)
-        self.offset_spinbox.setSuffix(" ms")
-        self.offset_spinbox.setValue(settings.media_sync_offset_ms.get())
-        self.offset_spinbox.setToolTip(
-            "Compensate for Bluetooth latency when syncing with media players.\n"
-            "Positive values delay the signal, negative values advance it."
-        )
-        self.offset_spinbox.valueChanged.connect(self._on_offset_changed)
-        offset_layout.addWidget(offset_label)
-        offset_layout.addWidget(self.offset_spinbox)
-        offset_layout.addStretch()
-        layout.addLayout(offset_layout)
-
     def set_device(self, device: Optional[CoyoteDevice]):
         """Connect to a Coyote device and listen for status updates."""
         # Disconnect from previous device
@@ -173,10 +148,6 @@ class CoyoteStatusWidget(QGroupBox):
         """Handle reset button click."""
         if self.device:
             self.device.reset_connection()
-
-    def _on_offset_changed(self, value: int):
-        """Handle sync offset change."""
-        settings.media_sync_offset_ms.set(value)
 
     def cleanup(self):
         """Disconnect from device when cleaning up."""

@@ -40,6 +40,7 @@ from device.coyote.constants import DEVICE_NAME
 from qt_ui.widgets.icon_with_connection_status import IconWithConnectionStatus
 from qt_ui.coyote_settings_widget import CoyoteSettingsWidget
 from qt_ui.widgets.coyote_status_widget import CoyoteStatusWidget
+from qt_ui.widgets.media_sync_offset_widget import MediaSyncOffsetWidget
 from qt_ui.widgets.coyote_motion_settings_widget import CoyoteMotionSettingsWidget
 from qt_ui.widgets.coyote_motion_visualization_widget import CoyoteMotionVisualizationWidget
 from qt_ui.widgets.dark_mode_toggle import DarkModeToggle
@@ -186,6 +187,10 @@ class Window(QMainWindow, Ui_MainWindow):
         # Insert after groupBox_pattern in the left_frame layout
         # Layout order: 0=stackedWidget_visual, 1=groupBox_volume, 2=groupBox_pattern, 3=spacer
         self.left_frame.layout().insertWidget(3, self.coyote_status_widget)
+
+        # Media sync offset widget (shown for all devices)
+        self.media_sync_offset_widget = MediaSyncOffsetWidget()
+        self.left_frame.layout().insertWidget(4, self.media_sync_offset_widget)
 
         self.output_device = None
 
