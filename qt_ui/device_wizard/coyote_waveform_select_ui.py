@@ -35,6 +35,11 @@ class Ui_WizardPageCoyote(object):
 
         self.verticalLayout.addWidget(self.two_channel_radio)
 
+        self.motion_algorithm_radio = QRadioButton(WizardPageCoyote)
+        self.motion_algorithm_radio.setObjectName(u"motion_algorithm_radio")
+
+        self.verticalLayout.addWidget(self.motion_algorithm_radio)
+
         self.label = QLabel(WizardPageCoyote)
         self.label.setObjectName(u"label")
         self.label.setWordWrap(True)
@@ -56,4 +61,5 @@ class Ui_WizardPageCoyote(object):
         WizardPageCoyote.setTitle(QCoreApplication.translate("WizardPageCoyote", u"Select Coyote mode", None))
         self.three_phase_radio.setText(QCoreApplication.translate("WizardPageCoyote", u"Simulated Three-Phase by Diglet48", None))
         self.two_channel_radio.setText(QCoreApplication.translate("WizardPageCoyote", u"Two-Channel by Voltmouse69", None))
+        self.motion_algorithm_radio.setText(QCoreApplication.translate("WizardPageCoyote", u"Motion Algorithm (Funscript Enhancement)", None))
     # retranslateUi

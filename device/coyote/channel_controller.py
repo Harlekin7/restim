@@ -39,7 +39,7 @@ class ChannelController:
 
         self._last_intensity: float | None = None
         self._last_time: float | None = None
-        self._max_change_per_pulse = float(self._params.max_intensity_change_per_pulse.get())
+        self._max_change_per_pulse = float(self._params.max_intensity_change_per_pulse.interpolate(0.0))
 
     def has_pulses(self, count: int) -> bool:
         return len(self._queue) >= count

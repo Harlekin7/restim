@@ -182,12 +182,45 @@ class SafetyParamsFOC:
     waveform_amplitude_amps: float
 
 @dataclass
+class CoyoteMotionVolumeParams:
+    """Dynamic volume parameters for Motion Algorithm"""
+    dynamic_enabled: AbstractAxis
+    dynamic_window_size: AbstractAxis
+    dynamic_sensitivity: AbstractAxis
+    base_volume: AbstractAxis
+
+
+@dataclass
 class CoyoteChannelParams:
     minimum_frequency: AbstractAxis
     maximum_frequency: AbstractAxis
     maximum_strength: AbstractAxis
     vibration: VibrationParams
-    pulse_frequency: AbstractAxis = None
+    pulse_frequency: AbstractAxis = None  # Allow None for optional parameter
+
+
+@dataclass
+class CoyoteMotionAlgorithmParams:
+    """Complete parameters for Motion Algorithm"""
+    position: ThreephasePositionParams
+    transform: ThreephasePositionTransformParams
+    calibrate: ThreephaseCalibrationParams
+    volume: VolumeParams
+    motion_volume: CoyoteMotionVolumeParams  # Dynamic volume system
+    carrier_frequency: AbstractAxis
+    pulse_frequency: AbstractAxis
+    pulse_width: AbstractAxis
+    pulse_interval_random: AbstractAxis
+    pulse_rise_time: AbstractAxis
+    max_intensity_change_per_pulse: AbstractAxis
+    channel_a: CoyoteChannelParams
+    channel_b: CoyoteChannelParams
+    # Motion Algorithm specific parameters
+    frequency_algorithm: AbstractAxis  # POSITION/VARIED/BLEND/THROBBING/FIXED
+    throbbing_intensity: AbstractAxis
+    bottom_region_threshold: AbstractAxis
+    upper_region_threshold: AbstractAxis
+
 
 @dataclass
 class CoyoteAlgorithmParams:

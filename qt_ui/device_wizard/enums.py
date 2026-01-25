@@ -14,6 +14,7 @@ class DeviceType(Enum):
     FOCSTIM_FOUR_PHASE = 7
     COYOTE_THREE_PHASE = 8
     COYOTE_TWO_CHANNEL = 9
+    COYOTE_MOTION_ALGORITHM = 10
 
 
 class WaveformType(Enum):
@@ -33,18 +34,19 @@ class DeviceConfiguration:
     def save(self):
         settings.device_config_device_type.set(self.device_type.value)
         if self.device_type in (DeviceType.AUDIO_THREE_PHASE, DeviceType.FOCSTIM_THREE_PHASE,
-                               DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
+                                DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL,
+                                DeviceType.COYOTE_MOTION_ALGORITHM):
             settings.device_config_waveform_type.set(self.waveform_type.value)
-            settings.device_config_min_freq.set(self.min_frequency)
-            settings.device_config_max_freq.set(self.max_frequency)
-            settings.device_config_waveform_amplitude_amps.set(self.waveform_amplitude_amps)
+            settings.device_config_min_freq.set(float(self.min_frequency))
+            settings.device_config_max_freq.set(float(self.max_frequency))
+            settings.device_config_waveform_amplitude_amps.set(float(self.waveform_amplitude_amps))
 
     @staticmethod
     def from_settings():
         return DeviceConfiguration(
             DeviceType(settings.device_config_device_type.get()),
             WaveformType(settings.device_config_waveform_type.get()),
-            settings.device_config_min_freq.get(),
-            settings.device_config_max_freq.get(),
-            settings.device_config_waveform_amplitude_amps.get(),
+            float(settings.device_config_min_freq.get()),
+            float(settings.device_config_max_freq.get()),
+            float(settings.device_config_waveform_amplitude_amps.get()),
         )

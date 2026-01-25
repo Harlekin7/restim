@@ -201,6 +201,28 @@ coyote_residual_bound = Setting("coyote/residual_bound", 0.49, float)
 coyote_enable_three_phase_calibration = Setting("coyote/enable_three_phase_calibration", True, bool)
 coyote_enable_texture = Setting("coyote/enable_texture", False, bool)
 
+# Motion Algorithm settings
+COYOTE_MOTION_FREQUENCY_ALGORITHM = Setting("coyote_motion/frequency_algorithm", "POSITION", str)
+COYOTE_MOTION_THROBBING_INTENSITY = Setting("coyote_motion/throbbing_intensity", 0.3, float)
+COYOTE_MOTION_BOTTOM_REGION_THRESHOLD = Setting("coyote_motion/bottom_threshold", 0.3, float)
+COYOTE_MOTION_UPPER_REGION_THRESHOLD = Setting("coyote_motion/upper_threshold", 0.7, float)
+
+# Dynamic volume settings
+COYOTE_MOTION_DYNAMIC_VOLUME_ENABLED = Setting("coyote_motion/dynamic_volume_enabled", True, bool)
+COYOTE_MOTION_DYNAMIC_WINDOW_SIZE = Setting("coyote_motion/dynamic_window_size", 2.0, float)
+COYOTE_MOTION_DYNAMIC_SENSITIVITY = Setting("coyote_motion/dynamic_sensitivity", 0.5, float)
+COYOTE_MOTION_BASE_VOLUME = Setting("coyote_motion/base_volume", 0.3, float)  # Min volume during calm sections
+# Mix ratio: 0.0 = pure stroke count, 0.5 = balanced, 1.0 = pure velocity
+COYOTE_MOTION_DYNAMIC_MIX_RATIO = Setting("coyote_motion/dynamic_mix_ratio", 0.5, float)
+
+# Frequency velocity modulation (how much velocity affects pulse frequency)
+# 0.0 = no velocity effect, 0.5 = up to 50% frequency increase at max speed
+COYOTE_MOTION_FREQUENCY_VELOCITY_FACTOR = Setting("coyote_motion/frequency_velocity_factor", 0.5, float)
+
+# Fade settings for smooth transitions when movement stops/starts
+COYOTE_MOTION_FADE_OUT_TIME = Setting("coyote_motion/fade_out_time", 0.3, float)  # Seconds to fade out when stopping
+COYOTE_MOTION_FADE_IN_TIME = Setting("coyote_motion/fade_in_time", 0.1, float)  # Seconds to fade in when starting
+
 # Media sync offset to compensate for Bluetooth latency (in milliseconds, can be negative)
 media_sync_offset_ms = Setting("media_sync/offset_ms", 0, int)
 

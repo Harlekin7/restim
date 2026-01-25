@@ -17,7 +17,10 @@
       "Bash(\"c:/Users/soeri/Desktop/Restim Compare/diglet48-restim-coyote/build_venv/Scripts/pip.exe\" install -r \"c:/Users/soeri/Desktop/Restim Compare/diglet48-restim-coyote/requirements.txt\" pyinstaller)",
       "Bash(\"c:/Users/soeri/Desktop/Restim Compare/diglet48-restim-coyote/build_venv/Scripts/python.exe\" -m PyInstaller \"c:/Users/soeri/Desktop/Restim Compare/diglet48-restim-coyote/restim.spec\" --clean)",
       "Bash(\"c:/Users/soeri/Desktop/Restim Compare/diglet48-restim-coyote/build_venv/Scripts/pip.exe\" install \"PySide6==6.7.2\" --force-reinstall)",
-      "Bash(\"c:/Users/soeri/Desktop/Restim Compare/diglet48-restim-coyote/build_venv/Scripts/pip.exe\" install \"PySide6==6.8.2.1\" --force-reinstall)"
+      "Bash(\"c:/Users/soeri/Desktop/Restim Compare/diglet48-restim-coyote/build_venv/Scripts/pip.exe\" install \"PySide6==6.8.2.1\" --force-reinstall)",
+      "Bash(python -m py_compile:*)",
+      "Bash(python:*)",
+      "Bash(pyside6-uic:*)"
     ]
   }
 }

@@ -155,8 +155,16 @@ class DeviceSelectionWizard(QWizard):
                 None
             )
         elif self.page_device_type.coyote_radio.isChecked():
+            if self.page_coyote_waveform_select.is_three_phase():
+                device_type = DeviceType.COYOTE_THREE_PHASE
+            elif self.page_coyote_waveform_select.is_two_channel():
+                device_type = DeviceType.COYOTE_TWO_CHANNEL
+            elif self.page_coyote_waveform_select.is_motion_algorithm():
+                device_type = DeviceType.COYOTE_MOTION_ALGORITHM
+            else:
+                assert False
             return DeviceConfiguration(
-                DeviceType.COYOTE_THREE_PHASE if self.page_coyote_waveform_select.is_three_phase() else DeviceType.COYOTE_TWO_CHANNEL,
+                device_type,
                 WaveformType.PULSE_BASED,
                 min_freq, max_freq,
                 waveform_ampltiude_amps
@@ -175,12 +183,14 @@ class DeviceSelectionWizard(QWizard):
             self.page_focstim_waveform_select.four_phase_radio.setChecked(True)
         if config.device_type == DeviceType.NEOSTIM_THREE_PHASE:
             self.page_device_type.neostim_radio.setChecked(True)
-        elif config.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
+        elif config.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL, DeviceType.COYOTE_MOTION_ALGORITHM):
             self.page_device_type.coyote_radio.setChecked(True)
             if config.device_type == DeviceType.COYOTE_THREE_PHASE:
                 self.page_coyote_waveform_select.three_phase_radio.setChecked(True)
-            else:
+            elif config.device_type == DeviceType.COYOTE_TWO_CHANNEL:
                 self.page_coyote_waveform_select.two_channel_radio.setChecked(True)
+            elif config.device_type == DeviceType.COYOTE_MOTION_ALGORITHM:
+                self.page_coyote_waveform_select.motion_algorithm_radio.setChecked(True)
 
         self.page_waveform_type.continuous_radio.setChecked(config.waveform_type == WaveformType.CONTINUOUS)
         self.page_waveform_type.pulse_based_radio.setChecked(config.waveform_type == WaveformType.PULSE_BASED)

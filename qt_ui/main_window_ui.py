@@ -37,6 +37,7 @@ from qt_ui.widgets.fourphase_widget_stereographic import FourphaseWidgetStereogr
 from qt_ui.widgets.threephase_widget import ThreephaseWidgetAlphaBeta
 from qt_ui.widgets.coyote_threephase_widget import CoyoteThreePhaseWidget
 from qt_ui.widgets.volume_widget import VolumeWidget
+from qt_ui.widgets.coyote_motion_settings_widget import CoyoteMotionSettingsWidget
 import restim_rc
 
 class Ui_MainWindow(object):
@@ -221,6 +222,9 @@ class Ui_MainWindow(object):
         self.tab_coyote = CoyoteSettingsWidget()
         self.tab_coyote.setObjectName(u"tab_coyote")
         self.tabWidget.addTab(self.tab_coyote, "")
+        self.tab_coyote_motion = CoyoteMotionSettingsWidget()
+        self.tab_coyote_motion.setObjectName(u"tab_coyote_motion")
+        self.tabWidget.addTab(self.tab_coyote_motion, "")
         self.tab_threephase = ThreePhaseSettingsWidget()
         self.tab_threephase.setObjectName(u"tab_threephase")
         self.tabWidget.addTab(self.tab_threephase, "")
@@ -349,6 +353,7 @@ class Ui_MainWindow(object):
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_pulse_settings), QCoreApplication.translate("MainWindow", u"Pulse settings", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_neostim), QCoreApplication.translate("MainWindow", u"NeoStim", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_coyote), QCoreApplication.translate("MainWindow", u"Coyote", None))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_coyote_motion), QCoreApplication.translate("MainWindow", u"Motion", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_a_b_testing), QCoreApplication.translate("MainWindow", u"A/B testing", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_volume), QCoreApplication.translate("MainWindow", u"Volume", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_vibrate), QCoreApplication.translate("MainWindow", u"Vibration", None))

@@ -68,6 +68,11 @@ class CoyoteSettingsWidget(QtWidgets.QWidget):
         self.device.power_levels_changed.connect(self.on_power_levels_changed)
         self.device.pulse_sent.connect(self.on_pulse_sent)
 
+        # Clear "No Funscript" flag when setting up device (prevents stale state from previous mode)
+        for control in self.channel_controls.values():
+            if control.pulse_graph and hasattr(control.pulse_graph.plot, 'set_no_funscript_message'):
+                control.pulse_graph.plot.set_no_funscript_message(False)
+
         for control in self.channel_controls.values():
             control.reset_volume()
 
@@ -97,6 +102,25 @@ class CoyoteSettingsWidget(QtWidgets.QWidget):
         if not self.device:
             return
 
+        # Check if this is a Motion Algorithm by checking the algorithm type
+        from device.coyote.motion_algorithm import CoyoteMotionAlgorithm
+        is_motion_algo = isinstance(self.device.algorithm, CoyoteMotionAlgorithm)
+
+        # Only show "No Funscript" message for Motion Algorithm with all zero intensity
+        show_no_funscript = False
+        if is_motion_algo:
+            all_zero = True
+            if pulses.channel_a:
+                all_zero = all_zero and all(p.intensity == 0 for p in pulses.channel_a)
+            if pulses.channel_b:
+                all_zero = all_zero and all(p.intensity == 0 for p in pulses.channel_b)
+            show_no_funscript = all_zero
+
+        # Always update the flag (clears it for non-Motion modes)
+        for control in self.channel_controls.values():
+            if control.pulse_graph and hasattr(control.pulse_graph.plot, 'set_no_funscript_message'):
+                control.pulse_graph.plot.set_no_funscript_message(show_no_funscript)
+
         for control in self.channel_controls.values():
             control.apply_pulses(pulses, self.device.strengths)
 
@@ -113,8 +137,11 @@ class CoyoteSettingsWidget(QtWidgets.QWidget):
             self.device.pulse_sent.disconnect(self.on_pulse_sent)
             self.device = None
 
+    def clear_no_funscript_message(self):
+        """Clear the 'No Funscript' message from pulse graphs. Called when starting playback."""
         for control in self.channel_controls.values():
-            control.cleanup()
+            if control.pulse_graph and hasattr(control.pulse_graph.plot, 'set_no_funscript_message'):
+                control.pulse_graph.plot.set_no_funscript_message(False)
 
 @dataclass(frozen=True)
 class ChannelConfig:
@@ -567,6 +594,11 @@ class PulseGraph(QWidget):
         if len(self.pulses) > 200:  # Only clean when list gets large
             self.clean_old_pulses()
 
+    def set_no_funscript_message(self, show: bool):
+        """Set whether to show 'No Funscript' message"""
+        self._show_no_funscript = show
+        self._dirty = True
+
     def refresh(self):
         """Redraw the pulse visualization"""
         # Skip refresh if widget is not visible
@@ -592,7 +624,14 @@ class PulseGraph(QWidget):
         width = self.view.viewport().width()
         height = self.view.viewport().height()
 
+        # Show "No Funscript" message if flag is set or no pulses
         if not self.pulses:
+            if getattr(self, '_show_no_funscript', False):
+                text_item = self.scene.addText("No Funscript")
+                text_item.setDefaultTextColor(QColor(150, 150, 150))
+                # Center the text
+                text_rect = text_item.boundingRect()
+                text_item.setPos((width - text_rect.width()) / 2, (height - text_rect.height()) / 2)
             return
 
         # Sort pulses by timestamp so they display in chronological order
