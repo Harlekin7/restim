@@ -6,18 +6,18 @@ from qt_ui.device_wizard.coyote_waveform_select_ui import Ui_WizardPageCoyote
 # Description text for each mode
 THREE_PHASE_DESCRIPTION = """<b>Supported funscripts:</b>
 <table>
-<tr><td>L0 (volume)</td><td>Yes</td></tr>
-<tr><td>L1 (alpha)</td><td>Yes - channel balance</td></tr>
-<tr><td>L2 (beta)</td><td><i>Ignored</i></td></tr>
+<tr><td>V0 (volume)</td><td>Yes</td></tr>
+<tr><td>L0 (alpha)</td><td>Yes - channel balance</td></tr>
+<tr><td>L1 (beta)</td><td><i>Ignored</i></td></tr>
 <tr><td>Pulse Frequency</td><td>Yes</td></tr>
 <tr><td>Pulse Width</td><td>Yes</td></tr>
 </table>"""
 
 TWO_CHANNEL_DESCRIPTION = """<b>Supported funscripts:</b>
 <table>
-<tr><td>L0 (volume)</td><td>Yes</td></tr>
-<tr><td>L1 (alpha)</td><td>Yes</td></tr>
-<tr><td>L2 (beta)</td><td>Yes - channel balance</td></tr>
+<tr><td>V0 (volume)</td><td>Yes</td></tr>
+<tr><td>L0 (alpha)</td><td>Yes</td></tr>
+<tr><td>L1 (beta)</td><td>Yes - channel balance</td></tr>
 <tr><td>Pulse Frequency</td><td>Yes</td></tr>
 <tr><td>Pulse Width</td><td>Yes</td></tr>
 </table>"""
