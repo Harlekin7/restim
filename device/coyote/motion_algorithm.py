@@ -101,17 +101,27 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
             logger.info(f"Motion Algorithm: Loaded funscript with {len(self.position_data)} points, "
                        f"time range: {times[0]:.2f}s - {times[-1]:.2f}s")
 
-            # Auto-calibrate max speed and magnitude from the funscript
+            # Detect strokes (direction changes) and calculate stroke-based velocities
+            # This measures velocity based on stroke endpoints rather than individual keyframes,
+            # making the calculation independent of funscript authoring style
+            self._precompute_stroke_data(positions, times)
+
+            # Auto-calibrate max speed from stroke velocities (not keyframe velocities)
             # Use 95th percentile to avoid outliers skewing the range
-            speeds = np.abs(velocities)
+            if self.stroke_data:
+                stroke_velocities = [s[4] for s in self.stroke_data]  # Extract velocities
+                self.calibrated_max_speed = max(np.percentile(stroke_velocities, 95), 0.5)
+            else:
+                self.calibrated_max_speed = 0.5
+
             magnitudes = np.abs(accelerations)
-            self.calibrated_max_speed = max(np.percentile(speeds, 95), 0.5)  # At least 0.5
             self.calibrated_max_magnitude = max(np.percentile(magnitudes, 95), 5.0)  # At least 5.0
             logger.info(f"Motion Algorithm: Auto-calibrated from funscript: "
-                       f"max_speed={self.calibrated_max_speed:.2f}, max_magnitude={self.calibrated_max_magnitude:.2f}")
+                       f"max_speed={self.calibrated_max_speed:.2f} (from {len(self.stroke_data)} strokes), "
+                       f"max_magnitude={self.calibrated_max_magnitude:.2f}")
 
             # Calculate min/max amplitude across the entire funscript for dynamic volume normalization
-            self._precompute_amplitude_range(velocities, accelerations)
+            self._precompute_amplitude_range()
         else:
             # No timeline data - use defaults
             logger.warning(f"Motion Algorithm: No funscript loaded (axis has no 'timeline' attribute). "
@@ -119,41 +129,129 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
             self.position_data = [(0.0, 0.5)]
             self.velocity_data = [(0.0, 0.0)]
             self.acceleration_data = [(0.0, 0.0)]
+            self.stroke_data = []
 
-    def _precompute_amplitude_range(self, velocities: np.ndarray, accelerations: np.ndarray):
+    def _precompute_stroke_data(self, positions: np.ndarray, times: np.ndarray):
+        """Detect strokes (direction changes) and calculate stroke-based velocities.
+
+        This measures velocity based on stroke endpoints rather than individual keyframes,
+        making the calculation independent of funscript authoring style.
+
+        A stroke is defined as continuous movement in one direction (up or down) until
+        the direction reverses. The velocity of a stroke is:
+            abs(end_position - start_position) / (end_time - start_time)
+
+        This ensures that a gradual ramp (0→10→15→20→25→30→35) and a direct jump (0→35)
+        over the same time period produce the same stroke velocity.
+
+        Stores stroke_data as list of tuples:
+            (start_time, end_time, start_pos, end_pos, stroke_velocity)
+        """
+        if len(positions) < 2:
+            self.stroke_data = []
+            return
+
+        strokes = []
+        stroke_start_idx = 0
+        last_direction = 0  # 0 = unknown, 1 = up, -1 = down
+
+        # Small threshold to ignore noise/micro-movements
+        direction_threshold = 0.001
+
+        for i in range(1, len(positions)):
+            pos_delta = positions[i] - positions[i - 1]
+
+            # Determine current direction
+            if pos_delta > direction_threshold:
+                current_direction = 1  # moving up
+            elif pos_delta < -direction_threshold:
+                current_direction = -1  # moving down
+            else:
+                current_direction = last_direction  # no significant movement, keep previous
+
+            # Check for direction change
+            if last_direction != 0 and current_direction != 0 and current_direction != last_direction:
+                # Direction changed - record the stroke that just ended
+                stroke_end_idx = i - 1
+
+                start_time = times[stroke_start_idx]
+                end_time = times[stroke_end_idx]
+                start_pos = positions[stroke_start_idx]
+                end_pos = positions[stroke_end_idx]
+
+                time_delta = end_time - start_time
+                if time_delta > 0.001:  # Avoid division by near-zero
+                    stroke_velocity = abs(end_pos - start_pos) / time_delta
+                    strokes.append((start_time, end_time, start_pos, end_pos, stroke_velocity))
+
+                # Start new stroke from the direction change point
+                stroke_start_idx = stroke_end_idx
+
+            if current_direction != 0:
+                last_direction = current_direction
+
+        # Don't forget the final stroke (from last direction change to end)
+        if stroke_start_idx < len(positions) - 1:
+            start_time = times[stroke_start_idx]
+            end_time = times[-1]
+            start_pos = positions[stroke_start_idx]
+            end_pos = positions[-1]
+
+            time_delta = end_time - start_time
+            if time_delta > 0.001:
+                stroke_velocity = abs(end_pos - start_pos) / time_delta
+                strokes.append((start_time, end_time, start_pos, end_pos, stroke_velocity))
+
+        self.stroke_data = strokes
+        logger.info(f"Motion Algorithm: Detected {len(strokes)} strokes from {len(positions)} keyframes")
+
+    def _get_stroke_velocity_at_time(self, video_time: float) -> float:
+        """Get the stroke velocity for the stroke containing the given time.
+
+        Returns the velocity of the stroke that the given time falls within.
+        If time is between strokes, returns the velocity of the nearest stroke.
+        """
+        if not hasattr(self, 'stroke_data') or not self.stroke_data:
+            return 0.0
+
+        # Find stroke containing this time
+        for start_time, end_time, start_pos, end_pos, velocity in self.stroke_data:
+            if start_time <= video_time <= end_time:
+                return velocity
+
+        # Time is outside all strokes - find nearest
+        if video_time < self.stroke_data[0][0]:
+            return self.stroke_data[0][4]  # Return first stroke's velocity
+        else:
+            return self.stroke_data[-1][4]  # Return last stroke's velocity
+
+    def _precompute_amplitude_range(self):
         """Calculate calibration values for dynamic volume normalization.
 
         Calculates the max average velocity by scanning windows across the funscript.
         This prevents a single fast spike from dominating the entire range.
-        Uses the same timeframe setting as the velocity factor for consistency.
+        Uses stroke-based velocities for consistency with the velocity factor.
         """
-        # Store velocities for potential recalibration later
-        self._cached_velocities = velocities
-
         self._recalibrate_velocity_range()
 
-        # Count direction changes for stroke rate calculation
+        # Calculate stroke rate from stroke_data (each stroke is a direction change)
         times = [p[0] for p in self.position_data]
         time_span = times[-1] - times[0] if len(times) > 1 else 1.0
 
-        direction_changes = 0
-        last_sign = 0
-        for vel in velocities:
-            current_sign = 1 if vel > 0.01 else (-1 if vel < -0.01 else 0)
-            if current_sign != 0 and last_sign != 0 and current_sign != last_sign:
-                direction_changes += 1
-            if current_sign != 0:
-                last_sign = current_sign
-
-        avg_stroke_rate = direction_changes / time_span if time_span > 0 else 1.0
+        # Number of strokes equals number of direction changes
+        stroke_count = len(self.stroke_data) if hasattr(self, 'stroke_data') else 0
+        avg_stroke_rate = stroke_count / time_span if time_span > 0 else 1.0
         self.calibrated_max_stroke_rate = max(avg_stroke_rate * 1.5, 1.0)
 
     def _recalibrate_velocity_range(self):
         """Recalibrate max velocity based on current timeframe setting.
 
+        Uses stroke-based velocities for calibration, making it independent of
+        funscript authoring style (intermediate keyframes vs direct jumps).
+
         Called automatically when timeframe changes, or can be called manually.
         """
-        if not hasattr(self, 'velocity_data') or len(self.velocity_data) < 2:
+        if not hasattr(self, 'stroke_data') or len(self.stroke_data) < 2:
             self.calibrated_max_speed = 0.5
             self._last_calibration_timeframe = settings.COYOTE_MOTION_VELOCITY_TIMEFRAME.get()
             return
@@ -169,7 +267,7 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
         # Store the timeframe used for this calibration
         self._last_calibration_timeframe = settings.COYOTE_MOTION_VELOCITY_TIMEFRAME.get()
 
-        # Scan the funscript with sliding windows to find max average velocity
+        # Scan the funscript with sliding windows to find max average stroke velocity
         window_averages = []
         step_size = calibration_window / 2  # 50% overlap
 
@@ -178,10 +276,12 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
             window_start = current_time - calibration_window / 2
             window_end = current_time + calibration_window / 2
 
-            # Get velocities in this window
+            # Get stroke velocities for strokes that overlap with this window
+            # A stroke overlaps if its time range intersects with the window
             velocities_in_window = [
-                abs(v) for t, v in self.velocity_data
-                if window_start <= t <= window_end
+                stroke[4]  # stroke velocity
+                for stroke in self.stroke_data
+                if stroke[0] <= window_end and stroke[1] >= window_start  # overlap check
             ]
 
             if velocities_in_window:
@@ -198,7 +298,8 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
             self.calibrated_max_speed = 0.5
 
         logger.info(f"Motion Algorithm: Recalibrated with timeframe={calibration_window:.1f}s, "
-                   f"{len(window_averages)} windows, max_avg_speed={self.calibrated_max_speed:.2f}")
+                   f"{len(window_averages)} windows, {len(self.stroke_data)} strokes, "
+                   f"max_avg_speed={self.calibrated_max_speed:.2f}")
 
     def _check_recalibration_needed(self):
         """Check if timeframe changed and recalibrate if needed."""
@@ -210,17 +311,18 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
             self._recalibrate_velocity_range()
 
     def _get_average_velocity_in_window(self, current_time: float) -> float:
-        """Get average absolute velocity within a timeframe window centered on current_time.
+        """Get average stroke velocity within a timeframe window centered on current_time.
 
-        This smooths out velocity over a configurable time window, providing a more
-        stable velocity measurement that represents the "overall velocity" of the
-        current section rather than instantaneous spikes.
+        Uses stroke-based velocities instead of keyframe velocities, making the
+        calculation independent of funscript authoring style. A gradual ramp
+        (0→10→15→20→25→30→35) and a direct jump (0→35) will produce the same
+        velocity measurement.
 
         Args:
             current_time: The current system time (will be mapped to video time)
 
         Returns:
-            Average absolute velocity within the window
+            Average stroke velocity within the window
         """
         # Check if timeframe changed and recalibrate if needed
         self._check_recalibration_needed()
@@ -241,14 +343,16 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
         window_start = video_time - half_window
         window_end = video_time + half_window
 
-        # Filter velocity_data to get absolute velocities within the window
+        # Get stroke velocities for strokes that overlap with this window
+        # A stroke overlaps if its time range intersects with the window
         velocities_in_window = [
-            abs(v) for t, v in self.velocity_data
-            if window_start <= t <= window_end
+            stroke[4]  # stroke velocity
+            for stroke in self.stroke_data
+            if stroke[0] <= window_end and stroke[1] >= window_start  # overlap check
         ]
 
         if not velocities_in_window:
-            # Fallback to 0 if no data in window (edge of funscript)
+            # Fallback to 0 if no strokes in window (edge of funscript)
             return 0.0
 
         avg_velocity = sum(velocities_in_window) / len(velocities_in_window)
@@ -256,18 +360,21 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
         # Log average velocity (occasionally, to avoid spam)
         if not hasattr(self, '_last_avg_vel_log') or current_time - getattr(self, '_last_avg_vel_log', 0) > 2.0:
             self._last_avg_vel_log = current_time
-            logger.info(f"  AVG VEL: window=[{window_start:.1f}s, {window_end:.1f}s], "
-                       f"samples={len(velocities_in_window)}, avg={avg_velocity:.3f}, "
+            logger.info(f"  AVG STROKE VEL: window=[{window_start:.1f}s, {window_end:.1f}s], "
+                       f"strokes={len(velocities_in_window)}, avg={avg_velocity:.3f}, "
                        f"global_max={self.calibrated_max_speed:.3f}")
 
         return avg_velocity
 
     def _calculate_dynamic_volume(self, current_velocity: float, current_time: float) -> float:
-        """Calculate dynamic volume based on velocity and stroke count over time window.
+        """Calculate dynamic volume based on stroke velocity and stroke count over time window.
 
         This detects "how active/intense is this section" by combining:
-        - Average velocity (fast vs slow movements)
+        - Average stroke velocity (fast vs slow movements, independent of keyframe density)
         - Stroke count (direction changes per time window)
+
+        Uses stroke-based velocity to ensure consistent behavior regardless of funscript
+        authoring style (gradual ramps vs direct jumps produce the same velocity).
 
         Returns a value between 0 and 1 representing the section intensity.
         """
@@ -276,10 +383,24 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
         sensitivity = settings.COYOTE_MOTION_DYNAMIC_SENSITIVITY.get()
         base_volume = settings.COYOTE_MOTION_BASE_VOLUME.get()
 
-        # Track velocity history
-        self.dynamic_velocity_history.append((current_time, current_velocity))
+        # Map system time to video time for stroke lookup
+        video_time = current_time
+        if self.timestamp_mapper is not None:
+            try:
+                mapped_time = self.timestamp_mapper.map_timestamp(current_time)
+                if mapped_time is not None and mapped_time >= 0:
+                    video_time = mapped_time
+            except Exception:
+                pass
 
-        # Detect direction changes (stroke detection)
+        # Get stroke velocity at current time (independent of keyframe density)
+        stroke_velocity = self._get_stroke_velocity_at_time(video_time)
+
+        # Track stroke velocity history (using stroke velocity, not keyframe velocity)
+        self.dynamic_velocity_history.append((current_time, stroke_velocity))
+
+        # Detect direction changes using instantaneous velocity sign
+        # (This is still valid - we're just detecting up vs down movement)
         current_sign = 1 if current_velocity > 0.01 else (-1 if current_velocity < -0.01 else 0)
         if current_sign != 0 and self.last_velocity_sign != 0 and current_sign != self.last_velocity_sign:
             self.direction_change_times.append(current_time)
@@ -291,11 +412,11 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
         self.dynamic_velocity_history = [(t, v) for t, v in self.dynamic_velocity_history if t >= cutoff_time]
         self.direction_change_times = [t for t in self.direction_change_times if t >= cutoff_time]
 
-        # Calculate average absolute velocity over the window
+        # Calculate average stroke velocity over the window
         if len(self.dynamic_velocity_history) > 0:
             avg_velocity = sum(abs(v) for _, v in self.dynamic_velocity_history) / len(self.dynamic_velocity_history)
         else:
-            avg_velocity = abs(current_velocity)
+            avg_velocity = abs(stroke_velocity)
 
         # Calculate stroke rate (direction changes per second)
         stroke_count = len(self.direction_change_times)
@@ -326,9 +447,10 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
         # Log dynamic volume calculation (occasionally)
         if not hasattr(self, '_last_dyn_vol_log') or current_time - getattr(self, '_last_dyn_vol_log', 0) > 2.0:
             self._last_dyn_vol_log = current_time
-            logger.info(f"  DYN VOL: avg_vel={avg_velocity:.3f}, stroke_rate={stroke_rate:.2f}/s, "
-                       f"norm_vel={normalized_velocity:.2f}, norm_stroke={normalized_stroke_rate:.2f}, "
-                       f"mix={mix_ratio:.0%}, intensity={intensity_metric:.2f}, dynamic_vol={dynamic_volume:.3f}")
+            logger.info(f"  DYN VOL: stroke_vel={stroke_velocity:.3f}, avg_vel={avg_velocity:.3f}, "
+                       f"stroke_rate={stroke_rate:.2f}/s, norm_vel={normalized_velocity:.2f}, "
+                       f"norm_stroke={normalized_stroke_rate:.2f}, mix={mix_ratio:.0%}, "
+                       f"intensity={intensity_metric:.2f}, dynamic_vol={dynamic_volume:.3f}")
 
         return dynamic_volume
 
