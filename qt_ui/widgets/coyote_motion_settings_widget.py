@@ -5,6 +5,75 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
 from PySide6.QtCore import Qt
 from qt_ui import settings
 
+# Tooltip strings for all controls
+TOOLTIP_FREQUENCY_ALGORITHM = (
+    "Selects how pulse frequency varies during playback.\n"
+    "See description below for details on each algorithm."
+)
+TOOLTIP_VELOCITY_FACTOR = (
+    "How much velocity affects frequency.\n"
+    "0% = algorithm only, 100% = velocity only"
+)
+TOOLTIP_VELOCITY_TIMEFRAME = (
+    "Time window for averaging velocity.\n"
+    "Larger values smooth out speed changes."
+)
+TOOLTIP_THROBBING_ENABLED = (
+    "Reduces opposite channel intensity when strokes\n"
+    "are confined to the top or bottom region."
+)
+TOOLTIP_THROBBING_INTENSITY = (
+    "How much to reduce the opposite channel.\n"
+    "Higher values create stronger regional focus."
+)
+TOOLTIP_BOTTOM_THRESHOLD = (
+    "Strokes staying below this threshold\n"
+    "reduce Channel B (top) intensity."
+)
+TOOLTIP_UPPER_THRESHOLD = (
+    "Strokes staying above this threshold\n"
+    "reduce Channel A (bottom) intensity."
+)
+TOOLTIP_BASE_AMPLITUDE = (
+    "Base output level during movement.\n"
+    "Minimum amplitude at center position."
+)
+TOOLTIP_EXTREME_BOOST = (
+    "Extra intensity at position extremes (0% and 100%).\n"
+    "Creates stronger sensation at top and bottom of strokes."
+)
+TOOLTIP_DYNAMIC_VOLUME_ENABLED = "Automatically adjust volume based on section intensity."
+TOOLTIP_DYNAMIC_SENSITIVITY = (
+    "How much dynamic volume affects output.\n"
+    "0% = constant, 100% = full variation"
+)
+TOOLTIP_WINDOW_SIZE = (
+    "Time window for measuring section intensity.\n"
+    "Longer windows provide smoother transitions."
+)
+TOOLTIP_MIX_RATIO = "Balance between Section Stroke count and Section Velocity"
+TOOLTIP_FADE_OUT_TIME = "Time to fade out when movement stops."
+TOOLTIP_FADE_IN_TIME = "Time to fade in when movement resumes."
+
+# Descriptions for frequency algorithm dropdown
+FREQ_ALGO_DESCRIPTIONS = {
+    "Position (Standard)": (
+        "Frequency varies directly with stroke position.\n"
+        "Bottom = min frequency, Top = max frequency."
+    ),
+    "Varied (Noise-based)": (
+        "Adds organic variation using noise modulation\n"
+        "for more natural-feeling pulses."
+    ),
+    "Blend (Position + Noise)": (
+        "50/50 mix of position-based and noise-based frequency."
+    ),
+    "Fixed (Constant)": (
+        "Frequency stays constant at the midpoint.\n"
+        "Position has no effect on pulse rate."
+    ),
+}
+
 
 class CoyoteMotionSettingsWidget(QWidget):
     """UI settings for Coyote Motion Algorithm enhancement"""
@@ -31,6 +100,12 @@ class CoyoteMotionSettingsWidget(QWidget):
         ])
         freq_layout.addWidget(QLabel("Algorithm:"))
         freq_layout.addWidget(self.frequency_algorithm)
+
+        # Dynamic description label for selected algorithm
+        self.frequency_algorithm_description = QLabel()
+        self.frequency_algorithm_description.setWordWrap(True)
+        self.frequency_algorithm_description.setStyleSheet("color: gray; font-size: 11px; padding: 4px;")
+        freq_layout.addWidget(self.frequency_algorithm_description)
 
         # Velocity Factor (integrated into Frequency Options)
         freq_layout.addSpacing(10)
@@ -218,6 +293,11 @@ class CoyoteMotionSettingsWidget(QWidget):
         self.base_amplitude.valueChanged.connect(self.update_amplitude_labels)
         self.extreme_boost.valueChanged.connect(self.update_amplitude_labels)
         self.mix_ratio.valueChanged.connect(self.update_mix_ratio_label)
+        self.frequency_algorithm.currentTextChanged.connect(self._update_algorithm_description)
+
+        # Apply tooltips and initialize description
+        self._apply_tooltips()
+        self._update_algorithm_description()
         
     def update_throbbing_labels(self, value):
         """Update throbbing intensity label"""
@@ -331,6 +411,37 @@ class CoyoteMotionSettingsWidget(QWidget):
         self.fade_in_time.valueChanged.connect(
             lambda value: settings.COYOTE_MOTION_FADE_IN_TIME.set(value / 1000.0)
         )
+
+    def _apply_tooltips(self):
+        """Apply tooltip text to all controls"""
+        # Frequency Options group
+        self.frequency_algorithm.setToolTip(TOOLTIP_FREQUENCY_ALGORITHM)
+        self.velocity_factor.setToolTip(TOOLTIP_VELOCITY_FACTOR)
+        self.velocity_timeframe.setToolTip(TOOLTIP_VELOCITY_TIMEFRAME)
+
+        # Intensity Options group
+        self.throbbing_enabled.setToolTip(TOOLTIP_THROBBING_ENABLED)
+        self.throbbing_intensity.setToolTip(TOOLTIP_THROBBING_INTENSITY)
+        self.bottom_threshold.setToolTip(TOOLTIP_BOTTOM_THRESHOLD)
+        self.upper_threshold.setToolTip(TOOLTIP_UPPER_THRESHOLD)
+        self.base_amplitude.setToolTip(TOOLTIP_BASE_AMPLITUDE)
+        self.extreme_boost.setToolTip(TOOLTIP_EXTREME_BOOST)
+
+        # Dynamic Volume group
+        self.dynamic_volume_enabled.setToolTip(TOOLTIP_DYNAMIC_VOLUME_ENABLED)
+        self.dynamic_sensitivity.setToolTip(TOOLTIP_DYNAMIC_SENSITIVITY)
+        self.window_size.setToolTip(TOOLTIP_WINDOW_SIZE)
+        self.mix_ratio.setToolTip(TOOLTIP_MIX_RATIO)
+
+        # Pause Fade group
+        self.fade_out_time.setToolTip(TOOLTIP_FADE_OUT_TIME)
+        self.fade_in_time.setToolTip(TOOLTIP_FADE_IN_TIME)
+
+    def _update_algorithm_description(self):
+        """Update the description label based on selected frequency algorithm"""
+        selected = self.frequency_algorithm.currentText()
+        description = FREQ_ALGO_DESCRIPTIONS.get(selected, "")
+        self.frequency_algorithm_description.setText(description)
 
     def cleanup(self):
         """Cleanup resources when closing"""
