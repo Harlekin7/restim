@@ -119,11 +119,19 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
     def _precompute_amplitude_range(self, velocities: np.ndarray, accelerations: np.ndarray):
         """Calculate calibration values for dynamic volume normalization.
 
-        Dynamic volume now uses velocity + stroke rate to detect section intensity:
-        - Average velocity over time window (fast vs slow sections)
-        - Stroke count / direction changes (busy vs sparse sections)
+        Calculates the max average velocity by scanning windows across the funscript.
+        This prevents a single fast spike from dominating the entire range.
+        Uses the same timeframe setting as the velocity factor for consistency.
         """
-        # Count direction changes (velocity sign flips) across the funscript
+        # Store velocities for potential recalibration later
+        self._cached_velocities = velocities
+
+        self._recalibrate_velocity_range()
+
+        # Count direction changes for stroke rate calculation
+        times = [p[0] for p in self.position_data]
+        time_span = times[-1] - times[0] if len(times) > 1 else 1.0
+
         direction_changes = 0
         last_sign = 0
         for vel in velocities:
@@ -133,22 +141,122 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
             if current_sign != 0:
                 last_sign = current_sign
 
-        # Calculate time span of funscript
+        avg_stroke_rate = direction_changes / time_span if time_span > 0 else 1.0
+        self.calibrated_max_stroke_rate = max(avg_stroke_rate * 1.5, 1.0)
+
+    def _recalibrate_velocity_range(self):
+        """Recalibrate max velocity based on current timeframe setting.
+
+        Called automatically when timeframe changes, or can be called manually.
+        """
+        if not hasattr(self, 'velocity_data') or len(self.velocity_data) < 2:
+            self.calibrated_max_speed = 0.5
+            self._last_calibration_timeframe = settings.COYOTE_MOTION_VELOCITY_TIMEFRAME.get()
+            return
+
         times = [p[0] for p in self.position_data]
         time_span = times[-1] - times[0] if len(times) > 1 else 1.0
 
-        # Calculate average stroke rate (direction changes per second)
-        avg_stroke_rate = direction_changes / time_span if time_span > 0 else 1.0
+        # Use the same timeframe as the user's velocity factor setting
+        calibration_window = settings.COYOTE_MOTION_VELOCITY_TIMEFRAME.get()
+        # Ensure window isn't larger than 1/4 of total funscript length
+        calibration_window = min(calibration_window, time_span / 4) if time_span > 0 else 5.0
 
-        # Use 95th percentile for max stroke rate (to handle outlier sections)
-        # Estimate by taking 1.5x the average as a reasonable max
-        self.calibrated_max_stroke_rate = max(avg_stroke_rate * 1.5, 1.0)
+        # Store the timeframe used for this calibration
+        self._last_calibration_timeframe = settings.COYOTE_MOTION_VELOCITY_TIMEFRAME.get()
 
-        logger.info(f"Motion Algorithm: Dynamic volume calibration: "
-                   f"max_speed={self.calibrated_max_speed:.2f}, "
-                   f"direction_changes={direction_changes}, "
-                   f"avg_stroke_rate={avg_stroke_rate:.2f}/s, "
-                   f"max_stroke_rate={self.calibrated_max_stroke_rate:.2f}/s")
+        # Scan the funscript with sliding windows to find max average velocity
+        window_averages = []
+        step_size = calibration_window / 2  # 50% overlap
+
+        current_time = times[0]
+        while current_time <= times[-1]:
+            window_start = current_time - calibration_window / 2
+            window_end = current_time + calibration_window / 2
+
+            # Get velocities in this window
+            velocities_in_window = [
+                abs(v) for t, v in self.velocity_data
+                if window_start <= t <= window_end
+            ]
+
+            if velocities_in_window:
+                window_avg = sum(velocities_in_window) / len(velocities_in_window)
+                window_averages.append(window_avg)
+
+            current_time += step_size
+
+        # Use 95th percentile of window averages as the calibrated max
+        # This represents the "most intense sections" without being skewed by single spikes
+        if window_averages:
+            self.calibrated_max_speed = max(np.percentile(window_averages, 95), 0.5)
+        else:
+            self.calibrated_max_speed = 0.5
+
+        logger.info(f"Motion Algorithm: Recalibrated with timeframe={calibration_window:.1f}s, "
+                   f"{len(window_averages)} windows, max_avg_speed={self.calibrated_max_speed:.2f}")
+
+    def _check_recalibration_needed(self):
+        """Check if timeframe changed and recalibrate if needed."""
+        current_timeframe = settings.COYOTE_MOTION_VELOCITY_TIMEFRAME.get()
+        last_timeframe = getattr(self, '_last_calibration_timeframe', None)
+
+        if last_timeframe is None or current_timeframe != last_timeframe:
+            logger.info(f"Motion Algorithm: Timeframe changed from {last_timeframe} to {current_timeframe}, recalibrating...")
+            self._recalibrate_velocity_range()
+
+    def _get_average_velocity_in_window(self, current_time: float) -> float:
+        """Get average absolute velocity within a timeframe window centered on current_time.
+
+        This smooths out velocity over a configurable time window, providing a more
+        stable velocity measurement that represents the "overall velocity" of the
+        current section rather than instantaneous spikes.
+
+        Args:
+            current_time: The current system time (will be mapped to video time)
+
+        Returns:
+            Average absolute velocity within the window
+        """
+        # Check if timeframe changed and recalibrate if needed
+        self._check_recalibration_needed()
+
+        # Map system time to video time (same as _get_position_velocity_acceleration)
+        video_time = current_time
+        if self.timestamp_mapper is not None:
+            try:
+                mapped_time = self.timestamp_mapper.map_timestamp(current_time)
+                if mapped_time is not None and mapped_time >= 0:
+                    video_time = mapped_time
+            except Exception as e:
+                logger.debug(f"Timestamp mapping failed in velocity window: {e}")
+
+        timeframe = settings.COYOTE_MOTION_VELOCITY_TIMEFRAME.get()
+        half_window = timeframe / 2.0
+
+        window_start = video_time - half_window
+        window_end = video_time + half_window
+
+        # Filter velocity_data to get absolute velocities within the window
+        velocities_in_window = [
+            abs(v) for t, v in self.velocity_data
+            if window_start <= t <= window_end
+        ]
+
+        if not velocities_in_window:
+            # Fallback to 0 if no data in window (edge of funscript)
+            return 0.0
+
+        avg_velocity = sum(velocities_in_window) / len(velocities_in_window)
+
+        # Log average velocity (occasionally, to avoid spam)
+        if not hasattr(self, '_last_avg_vel_log') or current_time - getattr(self, '_last_avg_vel_log', 0) > 2.0:
+            self._last_avg_vel_log = current_time
+            logger.info(f"  AVG VEL: window=[{window_start:.1f}s, {window_end:.1f}s], "
+                       f"samples={len(velocities_in_window)}, avg={avg_velocity:.3f}, "
+                       f"global_max={self.calibrated_max_speed:.3f}")
+
+        return avg_velocity
 
     def _calculate_dynamic_volume(self, current_velocity: float, current_time: float) -> float:
         """Calculate dynamic volume based on velocity and stroke count over time window.
@@ -429,24 +537,33 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
             base_freq = (min_freq + max_freq) / 2.0
 
         # Apply velocity modulation to frequency
-        # Faster movement = higher frequency (more responsive feel)
+        # Uses average velocity over a timeframe window, normalized against global funscript max
+        # At 100% velocity factor: frequency is fully controlled by velocity (min_freq to max_freq)
+        # At 0% velocity factor: frequency equals base_freq (no velocity influence)
         velocity_factor_setting = settings.COYOTE_MOTION_FREQUENCY_VELOCITY_FACTOR.get()
+
+        # Get average velocity within the timeframe window
+        avg_velocity = self._get_average_velocity_in_window(time)
+
+        # Normalize against global funscript velocity range
+        # calibrated_max_speed is the 95th percentile of all velocities in the funscript
         max_speed = getattr(self, 'calibrated_max_speed', 5.0)
-        normalized_speed = clamp(abs(velocity) / max_speed, 0.0, 1.0)
+        normalized_speed = clamp(avg_velocity / max_speed, 0.0, 1.0)
 
-        # velocity_factor ranges from 1.0 (no movement) to 1.0 + velocity_factor_setting (max speed)
-        velocity_factor = 1.0 + normalized_speed * velocity_factor_setting
+        # Calculate velocity-based frequency (maps full range: slow=min_freq, fast=max_freq)
+        velocity_based_freq = min_freq + normalized_speed * (max_freq - min_freq)
 
-        # Apply velocity modulation
-        modulated_freq = base_freq * velocity_factor
+        # Blend between base_freq and velocity_based_freq based on velocity_factor_setting
+        # 0% = pure base_freq, 100% = pure velocity control
+        modulated_freq = base_freq * (1.0 - velocity_factor_setting) + velocity_based_freq * velocity_factor_setting
 
         # Log frequency calculation (occasionally)
         if channel == 'A' and (not hasattr(self, '_last_freq_log') or
             getattr(self, '_last_freq_log', 0) + 2.0 < getattr(self, '_last_debug_log', 0)):
             self._last_freq_log = getattr(self, '_last_debug_log', 0)
-            logger.info(f"  FREQ: algorithm='{freq_algorithm}', base={base_freq:.1f}, "
-                       f"vel_factor={velocity_factor:.2f}, modulated={modulated_freq:.1f}, "
-                       f"min={min_freq:.1f}, max={max_freq:.1f}")
+            logger.info(f"  FREQ: algorithm='{freq_algorithm}', base={base_freq:.1f}, vel_based={velocity_based_freq:.1f}, "
+                       f"avg_vel={avg_velocity:.3f}, norm_speed={normalized_speed:.2f}, "
+                       f"blend={velocity_factor_setting:.0%}, result={modulated_freq:.1f}")
 
         return clamp(modulated_freq, min_freq, max_freq)
     

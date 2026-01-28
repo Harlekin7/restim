@@ -83,6 +83,17 @@ class CoyoteMotionSettingsWidget(QWidget):
         vel_factor_layout.addWidget(self.velocity_factor_label)
         vel_freq_layout.addLayout(vel_factor_layout)
 
+        # Velocity timeframe setting
+        timeframe_layout = QHBoxLayout()
+        timeframe_layout.addWidget(QLabel("Timeframe:"))
+        self.velocity_timeframe = QSpinBox()
+        self.velocity_timeframe.setRange(1, 60)  # 1 to 60 seconds
+        self.velocity_timeframe.setValue(5)
+        self.velocity_timeframe.setSuffix(" sec")
+        timeframe_layout.addWidget(self.velocity_timeframe)
+        timeframe_layout.addStretch()
+        vel_freq_layout.addLayout(timeframe_layout)
+
         vel_freq_layout.addWidget(QLabel("(Faster movement = higher pulse frequency)"))
 
         # Dynamic Volume Controls
@@ -212,6 +223,7 @@ class CoyoteMotionSettingsWidget(QWidget):
         
         # Velocity-to-frequency settings
         self.velocity_factor.setValue(int(settings.COYOTE_MOTION_FREQUENCY_VELOCITY_FACTOR.get() * 100))
+        self.velocity_timeframe.setValue(int(settings.COYOTE_MOTION_VELOCITY_TIMEFRAME.get()))
 
         # Dynamic volume settings
         self.dynamic_volume_enabled.setChecked(settings.COYOTE_MOTION_DYNAMIC_VOLUME_ENABLED.get())
@@ -234,6 +246,9 @@ class CoyoteMotionSettingsWidget(QWidget):
         )
         self.velocity_factor.valueChanged.connect(
             lambda value: settings.COYOTE_MOTION_FREQUENCY_VELOCITY_FACTOR.set(value / 100.0)
+        )
+        self.velocity_timeframe.valueChanged.connect(
+            lambda value: settings.COYOTE_MOTION_VELOCITY_TIMEFRAME.set(float(value))
         )
         self.dynamic_volume_enabled.toggled.connect(
             settings.COYOTE_MOTION_DYNAMIC_VOLUME_ENABLED.set

@@ -218,6 +218,9 @@ COYOTE_MOTION_DYNAMIC_MIX_RATIO = Setting("coyote_motion/dynamic_mix_ratio", 0.5
 # Frequency velocity modulation (how much velocity affects pulse frequency)
 # 0.0 = no velocity effect, 0.5 = up to 50% frequency increase at max speed
 COYOTE_MOTION_FREQUENCY_VELOCITY_FACTOR = Setting("coyote_motion/frequency_velocity_factor", 0.5, float)
+# Velocity timeframe: window size (in seconds) for local velocity min/max calculation
+# Uses a centered window: current_time +/- (timeframe/2)
+COYOTE_MOTION_VELOCITY_TIMEFRAME = Setting("coyote_motion/velocity_timeframe", 5.0, float)
 
 # Fade settings for smooth transitions when movement stops/starts
 COYOTE_MOTION_FADE_OUT_TIME = Setting("coyote_motion/fade_out_time", 0.3, float)  # Seconds to fade out when stopping
