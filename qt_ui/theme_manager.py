@@ -396,6 +396,64 @@ class ThemeManager(QObject):
                 color: {text_primary};
                 border: 1px solid {border};
             }}
+            QWizard {{
+                background-color: {bg_secondary};
+            }}
+            QWizard > QWidget {{
+                background-color: {bg_secondary};
+            }}
+            QWizard QLabel {{
+                color: {text_primary};
+                background-color: transparent;
+            }}
+            QWizard QLabel#qt_wizard_title {{
+                color: {text_primary};
+                background-color: transparent;
+                font-size: 16px;
+                font-weight: bold;
+            }}
+            QWizard QLabel#qt_wizard_subTitle {{
+                color: {text_secondary};
+                background-color: transparent;
+            }}
+            QWizardPage {{
+                background-color: {bg_secondary};
+                color: {text_primary};
+            }}
+            QWizard QFrame {{
+                background-color: {bg_secondary};
+            }}
+            QWizard QPushButton {{
+                background-color: {bg_primary};
+                color: {text_primary};
+                border: 1px solid {border};
+                padding: 6px 12px;
+                border-radius: 3px;
+            }}
+            QWizard QPushButton:hover {{
+                background-color: #505050;
+            }}
+            QWizard QRadioButton {{
+                background-color: transparent;
+                color: {text_primary};
+                border: none;
+                padding: 4px;
+                spacing: 8px;
+            }}
+            QWizard QRadioButton::indicator {{
+                width: 16px;
+                height: 16px;
+                border: 2px solid {border};
+                border-radius: 10px;
+                background-color: {bg_primary};
+            }}
+            QWizard QRadioButton::indicator:checked {{
+                background-color: #2a82da;
+                border: 2px solid #2a82da;
+            }}
+            QWizard QRadioButton::indicator:hover {{
+                border: 2px solid #2a82da;
+            }}
         """
 
     def _get_light_stylesheet(self) -> str:
@@ -583,6 +641,64 @@ class ThemeManager(QObject):
                 background-color: {bg_primary};
                 color: {text_primary};
                 border: 1px solid {border};
+            }}
+            QWizard {{
+                background-color: {bg_secondary};
+            }}
+            QWizard > QWidget {{
+                background-color: {bg_secondary};
+            }}
+            QWizard QLabel {{
+                color: {text_primary};
+                background-color: transparent;
+            }}
+            QWizard QLabel#qt_wizard_title {{
+                color: {text_primary};
+                background-color: transparent;
+                font-size: 16px;
+                font-weight: bold;
+            }}
+            QWizard QLabel#qt_wizard_subTitle {{
+                color: {text_secondary};
+                background-color: transparent;
+            }}
+            QWizardPage {{
+                background-color: {bg_secondary};
+                color: {text_primary};
+            }}
+            QWizard QFrame {{
+                background-color: {bg_secondary};
+            }}
+            QWizard QPushButton {{
+                background-color: {bg_primary};
+                color: {text_primary};
+                border: 1px solid {border};
+                padding: 6px 12px;
+                border-radius: 3px;
+            }}
+            QWizard QPushButton:hover {{
+                background-color: #e0e0e0;
+            }}
+            QWizard QRadioButton {{
+                background-color: transparent;
+                color: {text_primary};
+                border: none;
+                padding: 4px;
+                spacing: 8px;
+            }}
+            QWizard QRadioButton::indicator {{
+                width: 16px;
+                height: 16px;
+                border: 2px solid {border};
+                border-radius: 10px;
+                background-color: {bg_primary};
+            }}
+            QWizard QRadioButton::indicator:checked {{
+                background-color: #2a82da;
+                border: 2px solid #2a82da;
+            }}
+            QWizard QRadioButton::indicator:hover {{
+                border: 2px solid #2a82da;
             }}
         """
 
