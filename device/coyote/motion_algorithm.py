@@ -591,12 +591,12 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
         # Handle display names like "Position Based", "Blend (Position + Noise)", etc.
         algo_str = str(freq_algorithm).upper() if freq_algorithm else "FIXED"
 
-        if "POSITION" in algo_str and "BLEND" not in algo_str:
+        if "BLEND" in algo_str:
+            base_freq = self._blend_frequency(position, time, min_freq, max_freq)
+        elif "POSITION" in algo_str:
             base_freq = self._position_frequency(position, min_freq, max_freq)
         elif "VARIED" in algo_str or "NOISE" in algo_str:
             base_freq = self._varied_frequency(position, time, min_freq, max_freq)
-        elif "BLEND" in algo_str:
-            base_freq = self._blend_frequency(position, time, min_freq, max_freq)
         else:  # FIXED or unknown
             base_freq = (min_freq + max_freq) / 2.0
 
@@ -635,20 +635,32 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
         """Standard position-based frequency mapping"""
         return min_freq + position * (max_freq - min_freq)
 
-    def _varied_frequency(self, position: float, time: float, 
+    def _varied_frequency(self, position: float, time: float,
                         min_freq: float, max_freq: float) -> float:
-        """Noise-based frequency variation"""
-        # Simple noise implementation (can be enhanced later)
-        noise_value = math.sin(time * 0.7) * 0.2 + math.sin(time * 1.3) * 0.1
-        base_freq = self._position_frequency(position, min_freq, max_freq)
-        return base_freq * (1.0 + noise_value)
-    
-    def _blend_frequency(self, position: float, time: float, 
+        """Noise-based frequency variation around center frequency"""
+        # Get the range setting (0.0 to 1.0)
+        varied_range = settings.COYOTE_MOTION_VARIED_RANGE.get()
+
+        # Use center frequency as base
+        center_freq = (min_freq + max_freq) / 2.0
+        freq_range = (max_freq - min_freq) / 2.0
+
+        # Generate noise oscillation (-1 to +1)
+        noise_value = math.sin(time * 0.7) * 0.67 + math.sin(time * 1.3) * 0.33
+
+        # Apply range setting: noise_value * range * freq_range
+        return center_freq + noise_value * varied_range * freq_range
+
+    def _blend_frequency(self, position: float, time: float,
                       min_freq: float, max_freq: float) -> float:
         """Blend of position and varied algorithms"""
-        base_freq = self._position_frequency(position, min_freq, max_freq)
+        # Get the blend ratio setting (0.0 = position, 1.0 = noise)
+        blend_ratio = settings.COYOTE_MOTION_BLEND_RATIO.get()
+
+        position_freq = self._position_frequency(position, min_freq, max_freq)
         varied_freq = self._varied_frequency(position, time, min_freq, max_freq)
-        return 0.5 * base_freq + 0.5 * varied_freq
+
+        return position_freq * (1.0 - blend_ratio) + varied_freq * blend_ratio
     
     def has_funscript_data(self) -> bool:
         """Check if valid funscript motion data is loaded"""

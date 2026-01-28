@@ -231,6 +231,10 @@ COYOTE_MOTION_FADE_IN_TIME = Setting("coyote_motion/fade_in_time", 0.1, float)  
 COYOTE_MOTION_BASE_AMPLITUDE = Setting("coyote_motion/base_amplitude", 0.6, float)  # Base amplitude during movement (0.0-1.0)
 COYOTE_MOTION_EXTREME_BOOST = Setting("coyote_motion/extreme_boost", 0.3, float)  # Extra boost at position extremes (0.0-1.0)
 
+# Frequency algorithm parameters
+COYOTE_MOTION_VARIED_RANGE = Setting("coyote_motion/varied_range", 0.3, float)  # Noise variation range for Varied mode (0.0-1.0)
+COYOTE_MOTION_BLEND_RATIO = Setting("coyote_motion/blend_ratio", 0.5, float)  # Position vs Noise mix for Blend mode (0.0=position, 1.0=noise)
+
 # Media sync offset to compensate for Bluetooth latency (in milliseconds, can be negative)
 media_sync_offset_ms = Setting("media_sync/offset_ms", 0, int)
 

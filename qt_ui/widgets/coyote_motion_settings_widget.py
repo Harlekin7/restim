@@ -54,6 +54,14 @@ TOOLTIP_WINDOW_SIZE = (
 TOOLTIP_MIX_RATIO = "Balance between Section Stroke count and Section Velocity"
 TOOLTIP_FADE_OUT_TIME = "Time to fade out when movement stops."
 TOOLTIP_FADE_IN_TIME = "Time to fade in when movement resumes."
+TOOLTIP_VARIED_RANGE = (
+    "How much the frequency varies from center.\n"
+    "Higher values create wider frequency swings."
+)
+TOOLTIP_BLEND_RATIO = (
+    "Balance between Position and Noise algorithms.\n"
+    "0% = pure position, 100% = pure noise"
+)
 
 # Descriptions for frequency algorithm dropdown
 FREQ_ALGO_DESCRIPTIONS = {
@@ -62,11 +70,12 @@ FREQ_ALGO_DESCRIPTIONS = {
         "Bottom = min frequency, Top = max frequency."
     ),
     "Varied (Noise-based)": (
-        "Adds organic variation using noise modulation\n"
-        "for more natural-feeling pulses."
+        "Frequency oscillates around the center using noise.\n"
+        "Adjust the range slider to control variation size."
     ),
     "Blend (Position + Noise)": (
-        "50/50 mix of position-based and noise-based frequency."
+        "Mix of position-based and noise-based frequency.\n"
+        "Adjust the ratio slider to control the blend."
     ),
     "Fixed (Constant)": (
         "Frequency stays constant at the midpoint.\n"
@@ -106,6 +115,37 @@ class CoyoteMotionSettingsWidget(QWidget):
         self.frequency_algorithm_description.setWordWrap(True)
         self.frequency_algorithm_description.setStyleSheet("color: gray; font-size: 11px; padding: 4px;")
         freq_layout.addWidget(self.frequency_algorithm_description)
+
+        # Varied Range slider (visible only for Varied mode)
+        self.varied_range_widget = QWidget()
+        varied_range_layout = QHBoxLayout(self.varied_range_widget)
+        varied_range_layout.setContentsMargins(0, 0, 0, 0)
+        varied_range_layout.addWidget(QLabel("Range:"))
+        self.varied_range = QSlider(Qt.Horizontal)
+        self.varied_range.setRange(0, 100)
+        self.varied_range.setValue(30)
+        varied_range_layout.addWidget(self.varied_range)
+        self.varied_range_label = QLabel("30%")
+        varied_range_layout.addWidget(self.varied_range_label)
+        freq_layout.addWidget(self.varied_range_widget)
+        self.varied_range_widget.setVisible(False)
+
+        # Blend Ratio slider (visible only for Blend mode)
+        self.blend_ratio_widget = QWidget()
+        blend_ratio_layout = QHBoxLayout(self.blend_ratio_widget)
+        blend_ratio_layout.setContentsMargins(0, 0, 0, 0)
+        self.blend_position_label = QLabel("50%")
+        blend_ratio_layout.addWidget(self.blend_position_label)
+        blend_ratio_layout.addWidget(QLabel("Position"))
+        self.blend_ratio = QSlider(Qt.Horizontal)
+        self.blend_ratio.setRange(0, 100)
+        self.blend_ratio.setValue(50)
+        blend_ratio_layout.addWidget(self.blend_ratio)
+        blend_ratio_layout.addWidget(QLabel("Noise"))
+        self.blend_noise_label = QLabel("50%")
+        blend_ratio_layout.addWidget(self.blend_noise_label)
+        freq_layout.addWidget(self.blend_ratio_widget)
+        self.blend_ratio_widget.setVisible(False)
 
         # Velocity Factor (integrated into Frequency Options)
         freq_layout.addSpacing(10)
@@ -294,6 +334,8 @@ class CoyoteMotionSettingsWidget(QWidget):
         self.extreme_boost.valueChanged.connect(self.update_amplitude_labels)
         self.mix_ratio.valueChanged.connect(self.update_mix_ratio_label)
         self.frequency_algorithm.currentTextChanged.connect(self._update_algorithm_description)
+        self.varied_range.valueChanged.connect(self._update_varied_range_label)
+        self.blend_ratio.valueChanged.connect(self._update_blend_ratio_label)
 
         # Apply tooltips and initialize description
         self._apply_tooltips()
@@ -325,6 +367,15 @@ class CoyoteMotionSettingsWidget(QWidget):
         """Update mix ratio labels (strokes and velocity)"""
         self.mix_ratio_label.setText(f"{value}%")
         self.strokes_ratio_label.setText(f"{100 - value}%")
+
+    def _update_varied_range_label(self, value):
+        """Update varied range label"""
+        self.varied_range_label.setText(f"{value}%")
+
+    def _update_blend_ratio_label(self, value):
+        """Update blend ratio labels"""
+        self.blend_noise_label.setText(f"{value}%")
+        self.blend_position_label.setText(f"{100 - value}%")
 
     def setup_device(self, device):
         """Setup connection to Coyote device (for Motion Algorithm)"""
@@ -412,10 +463,23 @@ class CoyoteMotionSettingsWidget(QWidget):
             lambda value: settings.COYOTE_MOTION_FADE_IN_TIME.set(value / 1000.0)
         )
 
+        # Algorithm-specific settings
+        self.varied_range.setValue(int(settings.COYOTE_MOTION_VARIED_RANGE.get() * 100))
+        self.blend_ratio.setValue(int(settings.COYOTE_MOTION_BLEND_RATIO.get() * 100))
+
+        self.varied_range.valueChanged.connect(
+            lambda value: settings.COYOTE_MOTION_VARIED_RANGE.set(value / 100.0)
+        )
+        self.blend_ratio.valueChanged.connect(
+            lambda value: settings.COYOTE_MOTION_BLEND_RATIO.set(value / 100.0)
+        )
+
     def _apply_tooltips(self):
         """Apply tooltip text to all controls"""
         # Frequency Options group
         self.frequency_algorithm.setToolTip(TOOLTIP_FREQUENCY_ALGORITHM)
+        self.varied_range.setToolTip(TOOLTIP_VARIED_RANGE)
+        self.blend_ratio.setToolTip(TOOLTIP_BLEND_RATIO)
         self.velocity_factor.setToolTip(TOOLTIP_VELOCITY_FACTOR)
         self.velocity_timeframe.setToolTip(TOOLTIP_VELOCITY_TIMEFRAME)
 
@@ -438,10 +502,15 @@ class CoyoteMotionSettingsWidget(QWidget):
         self.fade_in_time.setToolTip(TOOLTIP_FADE_IN_TIME)
 
     def _update_algorithm_description(self):
-        """Update the description label based on selected frequency algorithm"""
+        """Update the description label and show/hide algorithm-specific sliders"""
         selected = self.frequency_algorithm.currentText()
         description = FREQ_ALGO_DESCRIPTIONS.get(selected, "")
         self.frequency_algorithm_description.setText(description)
+
+        # Show/hide algorithm-specific sliders
+        # Range slider visible for both Varied and Blend (since Blend uses the noise component)
+        self.varied_range_widget.setVisible("Varied" in selected or "Blend" in selected)
+        self.blend_ratio_widget.setVisible("Blend" in selected)
 
     def cleanup(self):
         """Cleanup resources when closing"""
