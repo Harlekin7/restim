@@ -203,6 +203,7 @@ coyote_enable_texture = Setting("coyote/enable_texture", False, bool)
 
 # Motion Algorithm settings
 COYOTE_MOTION_FREQUENCY_ALGORITHM = Setting("coyote_motion/frequency_algorithm", "POSITION", str)
+COYOTE_MOTION_THROBBING_ENABLED = Setting("coyote_motion/throbbing_enabled", False, bool)
 COYOTE_MOTION_THROBBING_INTENSITY = Setting("coyote_motion/throbbing_intensity", 0.3, float)
 COYOTE_MOTION_BOTTOM_REGION_THRESHOLD = Setting("coyote_motion/bottom_threshold", 0.3, float)
 COYOTE_MOTION_UPPER_REGION_THRESHOLD = Setting("coyote_motion/upper_threshold", 0.7, float)
@@ -225,6 +226,10 @@ COYOTE_MOTION_VELOCITY_TIMEFRAME = Setting("coyote_motion/velocity_timeframe", 5
 # Fade settings for smooth transitions when movement stops/starts
 COYOTE_MOTION_FADE_OUT_TIME = Setting("coyote_motion/fade_out_time", 0.3, float)  # Seconds to fade out when stopping
 COYOTE_MOTION_FADE_IN_TIME = Setting("coyote_motion/fade_in_time", 0.1, float)  # Seconds to fade in when starting
+
+# Amplitude settings for motion-based intensity
+COYOTE_MOTION_BASE_AMPLITUDE = Setting("coyote_motion/base_amplitude", 0.6, float)  # Base amplitude during movement (0.0-1.0)
+COYOTE_MOTION_EXTREME_BOOST = Setting("coyote_motion/extreme_boost", 0.3, float)  # Extra boost at position extremes (0.0-1.0)
 
 # Media sync offset to compensate for Bluetooth latency (in milliseconds, can be negative)
 media_sync_offset_ms = Setting("media_sync/offset_ms", 0, int)

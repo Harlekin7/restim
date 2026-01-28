@@ -60,6 +60,10 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
         self._last_fade_time = None
         self._is_moving = False
 
+        # Regional throbbing - track position history to detect confined strokes
+        self._position_history = []  # List of (timestamp, position) tuples
+        self._position_history_window = 0.5  # Time window in seconds to track positions
+
         # Precompute velocity and acceleration for better performance
         self._precompute_motion_data()
         
@@ -365,8 +369,8 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
         """Calculate amplitude using position-based approach with extreme boost and fade.
 
         This replaces the velocity-based amplitude calculation. The new approach:
-        - Uses a constant base amplitude (60%) during any movement
-        - Adds boost at position extremes (0 or 1) up to 90%
+        - Uses a configurable base amplitude during any movement
+        - Adds configurable boost at position extremes (0 or 1)
         - Velocity is no longer used for amplitude (it's used for frequency instead)
         - Smooth fade-out when movement stops, fade-in when movement resumes
 
@@ -376,7 +380,7 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
             current_time: Current time for fade calculations
 
         Returns:
-            Amplitude in 0-1 range (typically 0.6 to 0.9 during movement, fading to 0 on pause)
+            Amplitude in 0-1 range (base + extreme boost during movement, fading to 0 on pause)
         """
         # Threshold to detect actual movement vs pause
         movement_threshold = 0.01
@@ -417,15 +421,16 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
         if self._fade_level <= 0.0:
             return 0.0
 
-        # Base amplitude - constant during any movement
-        base_amp = 0.6  # 60% base ensures consistent sensation
+        # Base amplitude - constant during any movement (from settings)
+        base_amp = settings.COYOTE_MOTION_BASE_AMPLITUDE.get()
 
         # Position extreme boost - higher at top (1.0) and bottom (0.0)
         # Distance from center (0.5) determines boost amount
         distance_from_center = abs(normalized_pos - 0.5) * 2  # 0 at center, 1 at extremes
-        extreme_boost = distance_from_center * 0.3  # Up to 30% boost at extremes
+        extreme_boost_setting = settings.COYOTE_MOTION_EXTREME_BOOST.get()
+        extreme_boost = distance_from_center * extreme_boost_setting
 
-        # Final amplitude: 0.6 to 0.9 range, multiplied by fade level
+        # Final amplitude: base + boost range, multiplied by fade level
         raw_amplitude = base_amp + extreme_boost
         amplitude = raw_amplitude * self._fade_level
 
@@ -451,6 +456,67 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
         amplitude_b = amplitude * math.sqrt(effective_position)
 
         return amplitude_a, amplitude_b
+
+    def _apply_regional_throbbing(self, channel_a_amp: float, channel_b_amp: float,
+                                   position: float, current_time: float) -> Tuple[float, float]:
+        """Apply regional throbbing by reducing opposite channel intensity.
+
+        Only activates when strokes are confined to a region (not passing through).
+        Tracks position history to detect if recent movement stays within a region.
+
+        When stroke is confined to bottom region: reduce Channel B (top)
+        When stroke is confined to upper region: reduce Channel A (bottom)
+        When stroke passes through middle or spans regions: no change
+
+        Args:
+            channel_a_amp: Channel A amplitude (bottom channel)
+            channel_b_amp: Channel B amplitude (top channel)
+            position: Normalized position (0=bottom, 1=top)
+            current_time: Current timestamp for position tracking
+
+        Returns:
+            Tuple of (modified_channel_a_amp, modified_channel_b_amp)
+        """
+        if not settings.COYOTE_MOTION_THROBBING_ENABLED.get():
+            return channel_a_amp, channel_b_amp
+
+        # Track position history
+        self._position_history.append((current_time, position))
+
+        # Prune old entries outside the time window
+        cutoff_time = current_time - self._position_history_window
+        self._position_history = [(t, p) for t, p in self._position_history if t >= cutoff_time]
+
+        # Need enough history to determine stroke range
+        if len(self._position_history) < 2:
+            return channel_a_amp, channel_b_amp
+
+        # Get min and max position over the history window
+        positions = [p for _, p in self._position_history]
+        min_pos = min(positions)
+        max_pos = max(positions)
+
+        bottom_threshold = settings.COYOTE_MOTION_BOTTOM_REGION_THRESHOLD.get()
+        upper_threshold = settings.COYOTE_MOTION_UPPER_REGION_THRESHOLD.get()
+        intensity_setting = settings.COYOTE_MOTION_THROBBING_INTENSITY.get()  # 0.0-1.0
+
+        # Cap max reduction at 80% (so opposite channel always has at least 20% intensity)
+        max_reduction = 0.8
+        reduction_factor = intensity_setting * max_reduction
+
+        # Check if the entire stroke range is confined to a region
+        stroke_confined_to_bottom = max_pos < bottom_threshold
+        stroke_confined_to_upper = min_pos > upper_threshold
+
+        if stroke_confined_to_bottom:
+            # Stroke stays in bottom region: reduce Channel B (top channel)
+            channel_b_amp *= (1.0 - reduction_factor)
+        elif stroke_confined_to_upper:
+            # Stroke stays in upper region: reduce Channel A (bottom channel)
+            channel_a_amp *= (1.0 - reduction_factor)
+        # Stroke spans regions or passes through middle: no change
+
+        return channel_a_amp, channel_b_amp
 
     def _positional_intensity(self, time_s: float, volume: float) -> Tuple[int, int]:
         """Calculate intensity for both channels using Motion Algorithm.
@@ -527,8 +593,6 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
 
         if "POSITION" in algo_str and "BLEND" not in algo_str:
             base_freq = self._position_frequency(position, min_freq, max_freq)
-        elif "THROB" in algo_str:
-            base_freq = self._throbbing_frequency(position, time, min_freq, max_freq)
         elif "VARIED" in algo_str or "NOISE" in algo_str:
             base_freq = self._varied_frequency(position, time, min_freq, max_freq)
         elif "BLEND" in algo_str:
@@ -570,40 +634,7 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
     def _position_frequency(self, position: float, min_freq: float, max_freq: float) -> float:
         """Standard position-based frequency mapping"""
         return min_freq + position * (max_freq - min_freq)
-    
-    def _throbbing_frequency(self, position: float, time: float,
-                          min_freq: float, max_freq: float) -> float:
-        """Enhanced throbbing frequency for regional strokes"""
 
-        # Detect if we're in upper/bottom regions - read directly from settings for instant updates
-        bottom_threshold = settings.COYOTE_MOTION_BOTTOM_REGION_THRESHOLD.get()
-        upper_threshold = settings.COYOTE_MOTION_UPPER_REGION_THRESHOLD.get()
-
-        in_bottom_region = position < bottom_threshold
-        in_upper_region = position > upper_threshold
-
-        if in_bottom_region or in_upper_region:
-            # Add throbbing modulation
-            throbbing_freq = 2.0  # Hz - throbbing pulse rate
-            throbbing_intensity = settings.COYOTE_MOTION_THROBBING_INTENSITY.get()
-            
-            # Sinusoidal modulation for throbbing effect
-            throbbing_modulation = math.sin(2 * math.pi * throbbing_freq * time) * throbbing_intensity
-            
-            # Base frequency calculation
-            base_freq = self._position_frequency(position, min_freq, max_freq)
-            
-            # Apply throbbing enhancement
-            if in_bottom_region:
-                # Bottom strokes get frequency boosts to feel more "alive"
-                return base_freq * (1.0 + throbbing_modulation)
-            else:
-                # Upper strokes get variation to prevent monotony
-                return base_freq * (1.0 + throbbing_modulation * 0.5)
-        else:
-            # Mid-range strokes use standard position mapping
-            return self._position_frequency(position, min_freq, max_freq)
-    
     def _varied_frequency(self, position: float, time: float, 
                         min_freq: float, max_freq: float) -> float:
         """Noise-based frequency variation"""
@@ -668,6 +699,11 @@ class CoyoteMotionAlgorithm(CoyoteAlgorithm):
 
         # Apply positional channel distribution
         channel_a_amp, channel_b_amp = self._apply_positional_effect(motion_amplitude, normalized_pos)
+
+        # Apply regional throbbing (reduces opposite channel when stroke is confined to a region)
+        channel_a_amp, channel_b_amp = self._apply_regional_throbbing(
+            channel_a_amp, channel_b_amp, normalized_pos, time
+        )
 
         # Get enhanced frequencies with velocity modulation
         freq_a = self._calculate_enhanced_frequency(normalized_pos, time, 'A', vel)
