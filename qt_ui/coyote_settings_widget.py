@@ -703,7 +703,7 @@ class PulseGraph(QWidget):
 
                 x_start = 5 + (time_position_start * usable_width)
                 x_end = 5 + (time_position_end * usable_width)
-                rect_width = max(3, min(6, x_end - x_start))  # Keep bars narrow (3-6 pixels)
+                rect_width = max(3, x_end - x_start)  # Minimum 3px, but allow full width to fill gaps
 
                 # Calculate height based on intensity (always define rect_height)
                 height_ratio = pulse.applied_intensity / scale_max if scale_max > 0 else 0
